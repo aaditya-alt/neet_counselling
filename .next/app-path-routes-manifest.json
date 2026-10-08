@@ -1,13 +1,13 @@
 {
   "/_not-found/page": "/_not-found",
   "/admin/page": "/admin",
-  "/college-predictor/page": "/college-predictor",
   "/colleges/page": "/colleges",
-  "/mentor-portal/page": "/mentor-portal",
-  "/mentors/page": "/mentors",
   "/compare/page": "/compare",
+  "/college-predictor/page": "/college-predictor",
+  "/counselling/page": "/counselling",
+  "/mentors/page": "/mentors",
   "/page": "/",
   "/rank-predictor/page": "/rank-predictor",
-  "/counselling/page": "/counselling",
+  "/mentor-portal/page": "/mentor-portal",
   "/pricing/page": "/pricing"
 }

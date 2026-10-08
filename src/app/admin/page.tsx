@@ -29,8 +29,23 @@ import {
   KeyRound,
   GraduationCap
 } from 'lucide-react';
-import { getColleges, getCutoffs, getMentors, getPricingPlans, supabase } from '../../lib/supabase';
-import { College, Cutoff, Mentor, PricingPlan, LeadTier } from '../../types';
+import { 
+  getColleges, 
+  updateCollege, 
+  getMentors, 
+  addMentor, 
+  deleteMentor, 
+  getPricingPlans, 
+  updatePricingPlans,
+  getFeatureFlags,
+  updateFeatureFlags,
+  getStudentDeliverables,
+  saveStudentDeliverable,
+  StudentDeliverable,
+  supabase 
+} from '../../lib/supabase';
+import { getTelemetryHistory, TelemetryRecord } from '../../lib/telemetry';
+import { College, Mentor, PricingPlan, LeadTier } from '../../types';
 
 interface StudentLead {
   id: string;
@@ -70,16 +85,19 @@ export default function AdminPanelPage() {
   const [colleges, setColleges] = useState<College[]>([]);
   const [mentors, setMentors] = useState<Mentor[]>([]);
   const [pricingPlans, setPricingPlans] = useState<PricingPlan[]>([]);
+  const [deliverables, setDeliverables] = useState<StudentDeliverable[]>([]);
+  const [telemetryLogs, setTelemetryLogs] = useState<TelemetryRecord[]>([]);
   
   // Feature Switches
   const [peakMode, setPeakMode] = useState<boolean>(false);
   const [freeChatEnabled, setFreeChatEnabled] = useState<boolean>(true);
+  const [isSwitchUpdating, setIsSwitchUpdating] = useState<boolean>(false);
 
   // Search & Filters
   const [collegeSearch, setCollegeSearch] = useState('');
   const [leadFilter, setLeadFilter] = useState<'all' | 'hot' | 'vip_ready' | 'premium'>('all');
 
-  // Leads and Paid Deliverables
+  // Leads State
   const [leads, setLeads] = useState<StudentLead[]>([
     {
       id: 'l1',
@@ -114,7 +132,7 @@ export default function AdminPanelPage() {
       domicile_state: 'Maharashtra',
       lead_score: 88,
       lead_tier: 'hot',
-      assigned_mentor_name: 'Rahul Sharma (Senior State Specialist)',
+      assigned_mentor_name: 'Rahul Sharma (State Counselling Lead)',
       assigned_mentor_id: 'a0000000-0000-0000-0000-000000000002',
       is_premium: false,
       predictor_runs: 12,
@@ -131,16 +149,16 @@ export default function AdminPanelPage() {
       domicile_state: 'Karnataka',
       lead_score: 92,
       lead_tier: 'vip_ready',
-      assigned_mentor_name: 'Priya Verma (Counselling Analyst)',
-      assigned_mentor_id: 'a0000000-0000-0000-0000-000000000003',
+      assigned_mentor_name: 'Aaditya Ranjan (Senior AIQ Lead)',
+      assigned_mentor_id: 'a0000000-0000-0000-0000-000000000001',
       is_premium: true,
       predictor_runs: 15,
       comparisons_run: 9,
       viewed_premium_times: 6,
       meeting_link: 'https://meet.google.com/neet-vip-rohan',
-      choice_filling_pdf_url: 'https://collegemitra.com/docs/rohan_deemed_choices_2026.pdf',
+      choice_filling_pdf_url: '',
       deliverables_status: {
-        choice_list_sent: true,
+        choice_list_sent: false,
         video_call_done: false,
         seat_allotted: false,
       },
@@ -178,19 +196,30 @@ export default function AdminPanelPage() {
     }
   }, []);
 
+  // Load live data from Supabase
+  const loadAllData = async () => {
+    const [colls, ments, plans, flags, dels] = await Promise.all([
+      getColleges(),
+      getMentors(),
+      getPricingPlans(),
+      getFeatureFlags(),
+      getStudentDeliverables(),
+    ]);
+    setColleges(colls);
+    setMentors(ments);
+    setPricingPlans(plans);
+    setPeakMode(flags.peak_mode);
+    setFreeChatEnabled(flags.free_chat_enabled);
+    setDeliverables(dels);
+
+    // Load Telemetry Activity
+    const tele = getTelemetryHistory();
+    setTelemetryLogs(tele);
+  };
+
   useEffect(() => {
     if (!isAuthenticated) return;
-    async function loadData() {
-      const [colls, ments, plans] = await Promise.all([
-        getColleges(),
-        getMentors(),
-        getPricingPlans(),
-      ]);
-      setColleges(colls);
-      setMentors(ments);
-      setPricingPlans(plans);
-    }
-    loadData();
+    loadAllData();
   }, [isAuthenticated]);
 
   const handleAdminLogin = (e: React.FormEvent) => {
@@ -198,16 +227,16 @@ export default function AdminPanelPage() {
     setIsLoggingIn(true);
     setAuthError('');
 
-    // Strict Admin Credential Validation
     const id = adminUserId.trim().toLowerCase();
     const pass = adminPassword.trim();
 
-    if ((id === 'admin@collegemitra.com' || id === 'admin' || id === 'neet.collegemitra@gmail.com') && (pass === 'Admin@NEET2026' || pass === 'Admin@2026' || pass === 'CollegeMitra@2026')) {
+    if ((id === 'admin@collegemitra.com' || id === 'admin' || id === 'neet.collegemitra@gmail.com') && 
+        (pass === 'Admin@NEET2026' || pass === 'Admin@2026' || pass === 'CollegeMitra@2026')) {
       setIsAuthenticated(true);
       localStorage.setItem('cm_admin_auth', 'true');
       setAuthError('');
     } else {
-      setAuthError('Invalid Admin ID or Password. Access restricted to authorized College Mitra administrators.');
+      setAuthError('Invalid Admin ID or Password. Restricted access.');
     }
     setIsLoggingIn(false);
   };
@@ -218,69 +247,132 @@ export default function AdminPanelPage() {
     setAdminPassword('');
   };
 
-  // Lead Actions
-  const handleAssignMentor = (leadId: string, mentorId: string) => {
-    const mentor = mentors.find(m => m.id === mentorId);
-    if (!mentor) return;
-    setLeads(leads.map(l => l.id === leadId ? {
-      ...l,
-      assigned_mentor_id: mentor.id,
-      assigned_mentor_name: mentor.full_name,
-    } : l));
+  // 1. Dynamic Feature Switches
+  const handleTogglePeakMode = async () => {
+    setIsSwitchUpdating(true);
+    const nextVal = !peakMode;
+    setPeakMode(nextVal);
+    await updateFeatureFlags({ peak_mode: nextVal, free_chat_enabled: freeChatEnabled });
+    setIsSwitchUpdating(false);
   };
 
-  const handleSaveDeliverables = (leadId: string) => {
-    setLeads(leads.map(l => l.id === leadId ? {
-      ...l,
-      meeting_link: tempMeetingLink,
-      choice_filling_pdf_url: tempPdfUrl,
-      deliverables_status: {
-        choice_list_sent: !!tempPdfUrl,
-        video_call_done: l.deliverables_status?.video_call_done || false,
-        seat_allotted: l.deliverables_status?.seat_allotted || false,
-      }
-    } : l));
-    setSelectedLeadForDeliverable(null);
+  const handleToggleFreeChat = async () => {
+    setIsSwitchUpdating(true);
+    const nextVal = !freeChatEnabled;
+    setFreeChatEnabled(nextVal);
+    await updateFeatureFlags({ peak_mode: peakMode, free_chat_enabled: nextVal });
+    setIsSwitchUpdating(false);
   };
 
-  const handleToggleDeliverableStatus = (leadId: string, field: 'choice_list_sent' | 'video_call_done' | 'seat_allotted') => {
-    setLeads(leads.map(l => {
-      if (l.id !== leadId) return l;
-      const current = l.deliverables_status || { choice_list_sent: false, video_call_done: false, seat_allotted: false };
-      return {
-        ...l,
-        deliverables_status: {
-          ...current,
-          [field]: !current[field]
-        }
-      };
-    }));
-  };
-
-  // Mentor Actions
-  const handleAddMentor = () => {
+  // 2. Dynamic Mentor Operations
+  const handleAddMentor = async () => {
     if (!newMentor.name || !newMentor.phone) return;
-    const m: Mentor = {
-      id: `mentor_${Date.now()}`,
+    const added = await addMentor({
       full_name: newMentor.name,
       specialization: newMentor.specialization || 'Counselling Specialist',
       phone_number: newMentor.phone,
       is_active: true,
       max_capacity: 30,
       assigned_count: 0,
-    };
-    setMentors([...mentors, m]);
+    });
+    setMentors(prev => [added, ...prev.filter(m => m.id !== added.id)]);
     setNewMentor({ name: '', specialization: '', phone: '+91 85446 37096' });
   };
 
-  const handleDeleteMentor = (id: string) => {
-    setMentors(mentors.filter(m => m.id !== id));
+  const handleDeleteMentor = async (id: string) => {
+    setMentors(prev => prev.filter(m => m.id !== id));
+    await deleteMentor(id);
   };
 
-  // College Editor
-  const handleSaveCollegeFee = () => {
+  // 3. Dynamic Lead Assignment
+  const handleAssignMentor = (leadId: string, mentorId: string) => {
+    const mentor = mentors.find(m => m.id === mentorId);
+    if (!mentor) return;
+    setLeads(prev => prev.map(l => l.id === leadId ? {
+      ...l,
+      assigned_mentor_id: mentor.id,
+      assigned_mentor_name: mentor.full_name,
+    } : l));
+  };
+
+  // 4. Dynamic Deliverables Update
+  const handleSaveDeliverables = async (leadId: string) => {
+    const lead = leads.find(l => l.id === leadId);
+    if (!lead) return;
+
+    const updatedDeliverable: StudentDeliverable = {
+      id: `del_${lead.id}`,
+      studentId: lead.id,
+      studentName: lead.student_name,
+      phoneNumber: lead.phone_number,
+      score: lead.neet_score,
+      rank: lead.air_rank,
+      state: lead.domicile_state,
+      assignedMentorId: lead.assigned_mentor_id || mentors[0]?.id || 'a0000000-0000-0000-0000-000000000001',
+      assignedMentorName: lead.assigned_mentor_name || mentors[0]?.full_name || 'Aaditya Ranjan',
+      isPremium: true,
+      meetingLink: tempMeetingLink,
+      choicePdfUrl: tempPdfUrl,
+      choiceList: [],
+      status: {
+        choice_list_sent: !!tempPdfUrl,
+        video_call_done: lead.deliverables_status?.video_call_done || false,
+        seat_allotted: lead.deliverables_status?.seat_allotted || false,
+      },
+      round: 1,
+      updatedAt: new Date().toISOString(),
+    };
+
+    await saveStudentDeliverable(updatedDeliverable);
+
+    setLeads(prev => prev.map(l => l.id === leadId ? {
+      ...l,
+      meeting_link: tempMeetingLink,
+      choice_filling_pdf_url: tempPdfUrl,
+      deliverables_status: updatedDeliverable.status,
+    } : l));
+
+    setSelectedLeadForDeliverable(null);
+  };
+
+  const handleToggleDeliverableStatus = async (leadId: string, field: 'choice_list_sent' | 'video_call_done' | 'seat_allotted') => {
+    const lead = leads.find(l => l.id === leadId);
+    if (!lead) return;
+
+    const current = lead.deliverables_status || { choice_list_sent: false, video_call_done: false, seat_allotted: false };
+    const nextStatus = { ...current, [field]: !current[field] };
+
+    setLeads(prev => prev.map(l => l.id === leadId ? { ...l, deliverables_status: nextStatus } : l));
+
+    await saveStudentDeliverable({
+      id: `del_${lead.id}`,
+      studentId: lead.id,
+      studentName: lead.student_name,
+      phoneNumber: lead.phone_number,
+      score: lead.neet_score,
+      rank: lead.air_rank,
+      state: lead.domicile_state,
+      assignedMentorId: lead.assigned_mentor_id || 'a0000000-0000-0000-0000-000000000001',
+      assignedMentorName: lead.assigned_mentor_name || 'Aaditya Ranjan',
+      isPremium: true,
+      meetingLink: lead.meeting_link,
+      choicePdfUrl: lead.choice_filling_pdf_url,
+      choiceList: [],
+      status: nextStatus,
+      round: 1,
+      updatedAt: new Date().toISOString(),
+    });
+  };
+
+  // 5. Dynamic College Fee Editor
+  const handleSaveCollegeFee = async () => {
     if (!editingCollege) return;
-    setColleges(colleges.map(c => c.id === editingCollege.id ? editingCollege : c));
+    await updateCollege(editingCollege.id, {
+      annual_tuition_fee: editingCollege.annual_tuition_fee,
+      security_deposit: editingCollege.security_deposit,
+      bond_penalty_amount: editingCollege.bond_penalty_amount,
+    });
+    setColleges(prev => prev.map(c => c.id === editingCollege.id ? editingCollege : c));
     setEditingCollege(null);
   };
 
@@ -292,14 +384,12 @@ export default function AdminPanelPage() {
     return true;
   });
 
-  // If Not Authenticated -> Render High-Security Admin Login Barrier
   if (!isAuthenticated) {
     return (
       <div className="min-h-[80vh] flex items-center justify-center px-4 py-12">
         <div className="max-w-md w-full bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden">
-          {/* Header */}
-          <div className="bg-gradient-to-r from-navy-950 via-slate-900 to-navy-900 p-8 text-white text-center relative">
-            <div className="w-16 h-16 rounded-2xl bg-emerald-500/20 border border-emerald-400/40 text-emerald-400 flex items-center justify-center mx-auto mb-4 shadow-inner">
+          <div className="bg-gradient-to-r from-navy-950 via-slate-900 to-navy-900 p-8 text-white text-center">
+            <div className="w-16 h-16 rounded-2xl bg-emerald-500/20 border border-emerald-400/40 text-emerald-400 flex items-center justify-center mx-auto mb-4">
               <ShieldCheck className="w-8 h-8" />
             </div>
             <h2 className="text-2xl font-black tracking-tight">College Mitra Master Admin</h2>
@@ -308,7 +398,6 @@ export default function AdminPanelPage() {
             </p>
           </div>
 
-          {/* Login Form */}
           <form onSubmit={handleAdminLogin} className="p-8 space-y-5">
             {authError && (
               <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-start gap-2">
@@ -372,18 +461,24 @@ export default function AdminPanelPage() {
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> Authenticated Administrator
             </span>
             <span className="px-2.5 py-0.5 bg-slate-800 text-slate-300 text-xs font-mono rounded-md">
-              NEET 2026-27
+              NEET 2026-27 • Live Synced
             </span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
             College Mitra Admin & Deliverables Center
           </h1>
           <p className="text-xs text-slate-300">
-            Real-time telemetry, lead assignment, VIP deliverables dispatch, mentor roster, and master control switches.
+            Real-time Supabase telemetry, lead assignment, VIP deliverables dispatch, and master controls.
           </p>
         </div>
 
         <div className="flex items-center gap-3">
+          <button
+            onClick={loadAllData}
+            className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5"
+          >
+            <RefreshCw className="w-4 h-4 text-emerald-400" /> Refresh Live
+          </button>
           <button
             onClick={handleAdminLogout}
             className="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl shadow transition flex items-center gap-1.5"
@@ -398,7 +493,7 @@ export default function AdminPanelPage() {
         <div className="p-4 bg-white rounded-2xl border border-slate-200 shadow-sm">
           <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Leads</div>
           <div className="text-2xl font-black text-navy-950 mt-1">{leads.length}</div>
-          <div className="text-[11px] text-emerald-600 font-semibold mt-0.5">↑ 100% active pipeline</div>
+          <div className="text-[11px] text-emerald-600 font-semibold mt-0.5">↑ 100% live pipeline</div>
         </div>
 
         <div className="p-4 bg-white rounded-2xl border border-slate-200 shadow-sm">
@@ -414,13 +509,13 @@ export default function AdminPanelPage() {
           <div className="text-2xl font-black text-emerald-600 mt-1">
             {leads.filter(l => l.is_premium).length}
           </div>
-          <div className="text-[11px] text-emerald-700 font-semibold mt-0.5">Deliverables pending: 1</div>
+          <div className="text-[11px] text-emerald-700 font-semibold mt-0.5">Deliverables queue active</div>
         </div>
 
         <div className="p-4 bg-white rounded-2xl border border-slate-200 shadow-sm">
           <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">Active Mentors</div>
           <div className="text-2xl font-black text-navy-950 mt-1">{mentors.length}</div>
-          <div className="text-[11px] text-slate-400 font-semibold mt-0.5">All branches covered</div>
+          <div className="text-[11px] text-slate-400 font-semibold mt-0.5">Live roster synced</div>
         </div>
 
         <div className="p-4 bg-white rounded-2xl border border-slate-200 shadow-sm col-span-2 lg:col-span-1">
@@ -439,7 +534,7 @@ export default function AdminPanelPage() {
       <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-3">
         {[
           { id: 'crm', label: 'CRM & Lead Telemetry', icon: Users, badge: leads.length },
-          { id: 'deliverables', label: 'VIP Deliverables Queue', icon: Crown, badge: leads.filter(l => l.is_premium).length },
+          { id: 'deliverables', label: 'VIP Deliverables Queue', icon: Crown, badge: deliverables.length },
           { id: 'mentors', label: 'Mentors Management', icon: UserCheck, badge: mentors.length },
           { id: 'colleges', label: 'College Fee & Bond Editor', icon: Building2, badge: colleges.length },
           { id: 'switches', label: 'Master Switches & Pricing', icon: Sliders },
@@ -489,7 +584,7 @@ export default function AdminPanelPage() {
               ))}
             </div>
             <div className="text-xs text-slate-500 font-semibold">
-              Showing {filteredLeads.length} student leads
+              Showing {filteredLeads.length} student leads • Live Telemetry Events ({telemetryLogs.length})
             </div>
           </div>
 
@@ -563,33 +658,33 @@ export default function AdminPanelPage() {
         </div>
       )}
 
-      {/* TAB 2: VIP PAID DELIVERABLES QUEUE */}
+      {/* TAB 2: VIP DELIVERABLES QUEUE */}
       {activeTab === 'deliverables' && (
         <div className="space-y-6">
           <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-center justify-between text-xs text-amber-950">
             <div className="flex items-center gap-2">
               <Crown className="w-5 h-5 text-amber-600" />
-              <span>Paid students waiting for 1-on-1 Meet Links & Custom Choice Filling PDF attachments.</span>
+              <span>Live Deliverables Synced: 1-on-1 Google Meet Links & Custom Choice Filling PDFs.</span>
             </div>
             <span className="font-bold bg-amber-200 px-3 py-1 rounded-full">
-              {leads.filter(l => l.is_premium).length} Paid Enrolled Students
+              {deliverables.length} Paid Enrolled Students
             </span>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {leads.filter(l => l.is_premium).map((lead) => (
-              <div key={lead.id} className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
+            {deliverables.map((del) => (
+              <div key={del.id} className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
                 <div className="flex items-start justify-between">
                   <div>
                     <div className="flex items-center gap-2">
-                      <h3 className="font-bold text-slate-900 text-base">{lead.student_name}</h3>
+                      <h3 className="font-bold text-slate-900 text-base">{del.studentName}</h3>
                       <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2 py-0.5 rounded-full uppercase">
                         VIP Active
                       </span>
                     </div>
-                    <p className="text-xs text-slate-500">AIR #{lead.air_rank.toLocaleString()} • {lead.domicile_state}</p>
+                    <p className="text-xs text-slate-500">AIR #{del.rank.toLocaleString()} • {del.state} • Mentor: {del.assignedMentorName}</p>
                   </div>
-                  <a href={`tel:${lead.phone_number}`} className="p-2 bg-emerald-50 rounded-lg text-emerald-700 hover:bg-emerald-100">
+                  <a href={`tel:${del.phoneNumber}`} className="p-2 bg-emerald-50 rounded-lg text-emerald-700 hover:bg-emerald-100">
                     <PhoneCall className="w-4 h-4" />
                   </a>
                 </div>
@@ -598,36 +693,36 @@ export default function AdminPanelPage() {
                   <div className="text-xs font-bold text-slate-700">Deliverables Status Checklist:</div>
                   <div className="grid grid-cols-3 gap-2">
                     <button
-                      onClick={() => handleToggleDeliverableStatus(lead.id, 'choice_list_sent')}
+                      onClick={() => handleToggleDeliverableStatus(del.studentId, 'choice_list_sent')}
                       className={`p-2 rounded-lg text-center text-xs font-bold border transition ${
-                        lead.deliverables_status?.choice_list_sent
+                        del.status?.choice_list_sent
                           ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
                           : 'bg-slate-50 border-slate-200 text-slate-500'
                       }`}
                     >
-                      {lead.deliverables_status?.choice_list_sent ? '✓ Choice PDF Sent' : '○ Send PDF'}
+                      {del.status?.choice_list_sent ? '✓ Choice PDF Sent' : '○ Send PDF'}
                     </button>
 
                     <button
-                      onClick={() => handleToggleDeliverableStatus(lead.id, 'video_call_done')}
+                      onClick={() => handleToggleDeliverableStatus(del.studentId, 'video_call_done')}
                       className={`p-2 rounded-lg text-center text-xs font-bold border transition ${
-                        lead.deliverables_status?.video_call_done
+                        del.status?.video_call_done
                           ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
                           : 'bg-slate-50 border-slate-200 text-slate-500'
                       }`}
                     >
-                      {lead.deliverables_status?.video_call_done ? '✓ Meet Done' : '○ Video Meet'}
+                      {del.status?.video_call_done ? '✓ Meet Done' : '○ Video Meet'}
                     </button>
 
                     <button
-                      onClick={() => handleToggleDeliverableStatus(lead.id, 'seat_allotted')}
+                      onClick={() => handleToggleDeliverableStatus(del.studentId, 'seat_allotted')}
                       className={`p-2 rounded-lg text-center text-xs font-bold border transition ${
-                        lead.deliverables_status?.seat_allotted
+                        del.status?.seat_allotted
                           ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
                           : 'bg-slate-50 border-slate-200 text-slate-500'
                       }`}
                     >
-                      {lead.deliverables_status?.seat_allotted ? '✓ Seat Allotted' : '○ In Allotment'}
+                      {del.status?.seat_allotted ? '✓ Seat Allotted' : '○ In Allotment'}
                     </button>
                   </div>
                 </div>
@@ -635,8 +730,8 @@ export default function AdminPanelPage() {
                 <div className="p-3 bg-slate-50 rounded-xl space-y-2 text-xs">
                   <div className="flex items-center justify-between">
                     <span className="text-slate-500">Google Meet Link:</span>
-                    {lead.meeting_link ? (
-                      <a href={lead.meeting_link} target="_blank" rel="noreferrer" className="text-emerald-700 font-bold hover:underline flex items-center gap-1">
+                    {del.meetingLink ? (
+                      <a href={del.meetingLink} target="_blank" rel="noreferrer" className="text-emerald-700 font-bold hover:underline flex items-center gap-1">
                         <Video className="w-3.5 h-3.5" /> Launch Meet
                       </a>
                     ) : (
@@ -646,8 +741,8 @@ export default function AdminPanelPage() {
 
                   <div className="flex items-center justify-between">
                     <span className="text-slate-500">Choice Filling PDF:</span>
-                    {lead.choice_filling_pdf_url ? (
-                      <a href={lead.choice_filling_pdf_url} target="_blank" rel="noreferrer" className="text-emerald-700 font-bold hover:underline flex items-center gap-1">
+                    {del.choicePdfUrl ? (
+                      <a href={del.choicePdfUrl} target="_blank" rel="noreferrer" className="text-emerald-700 font-bold hover:underline flex items-center gap-1">
                         <FileText className="w-3.5 h-3.5" /> View PDF
                       </a>
                     ) : (
@@ -658,9 +753,27 @@ export default function AdminPanelPage() {
 
                 <button
                   onClick={() => {
-                    setSelectedLeadForDeliverable(lead);
-                    setTempMeetingLink(lead.meeting_link || '');
-                    setTempPdfUrl(lead.choice_filling_pdf_url || '');
+                    setSelectedLeadForDeliverable({
+                      id: del.studentId,
+                      student_name: del.studentName,
+                      phone_number: del.phoneNumber,
+                      neet_score: del.score,
+                      air_rank: del.rank,
+                      domicile_state: del.state,
+                      lead_score: 95,
+                      lead_tier: 'vip_ready',
+                      assigned_mentor_name: del.assignedMentorName,
+                      assigned_mentor_id: del.assignedMentorId,
+                      is_premium: true,
+                      predictor_runs: 5,
+                      comparisons_run: 2,
+                      viewed_premium_times: 3,
+                      meeting_link: del.meetingLink,
+                      choice_filling_pdf_url: del.choicePdfUrl,
+                      created_at: 'now',
+                    });
+                    setTempMeetingLink(del.meetingLink || '');
+                    setTempPdfUrl(del.choicePdfUrl || '');
                   }}
                   className="w-full py-2.5 bg-navy-950 hover:bg-navy-900 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition shadow"
                 >
@@ -678,7 +791,7 @@ export default function AdminPanelPage() {
           {/* Add Mentor Form */}
           <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
             <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-              <Plus className="w-4 h-4 text-emerald-600" /> Add New Senior Counselling Mentor
+              <Plus className="w-4 h-4 text-emerald-600" /> Add New Senior Counselling Mentor (Supabase Synced)
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <input
@@ -690,7 +803,7 @@ export default function AdminPanelPage() {
               />
               <input
                 type="text"
-                placeholder="Specialization (e.g. AIQ 15% & Deemed Expert)"
+                placeholder="Specialization (e.g. AIQ 15% & Deemed Specialist)"
                 value={newMentor.specialization}
                 onChange={(e) => setNewMentor({ ...newMentor, specialization: e.target.value })}
                 className="px-3.5 py-2.5 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500"
@@ -707,7 +820,7 @@ export default function AdminPanelPage() {
               onClick={handleAddMentor}
               className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow"
             >
-              <Plus className="w-4 h-4" /> Save Mentor
+              <Plus className="w-4 h-4" /> Save Mentor to Database
             </button>
           </div>
 
@@ -734,6 +847,7 @@ export default function AdminPanelPage() {
                       <button
                         onClick={() => handleDeleteMentor(m.id)}
                         className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                        title="Delete Mentor from Supabase"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -820,7 +934,8 @@ export default function AdminPanelPage() {
                   </p>
                 </div>
                 <button
-                  onClick={() => setPeakMode(!peakMode)}
+                  disabled={isSwitchUpdating}
+                  onClick={handleTogglePeakMode}
                   className={`px-4 py-2 rounded-xl text-xs font-bold transition shadow ${
                     peakMode ? 'bg-rose-600 text-white' : 'bg-slate-200 text-slate-700'
                   }`}
@@ -836,11 +951,12 @@ export default function AdminPanelPage() {
                 <div>
                   <h3 className="font-bold text-slate-900 text-sm">Free Chat Availability</h3>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    Toggle free chatbot vs human doctor consultation availability.
+                    Toggle free chatbot vs human mentor consultation availability in real-time.
                   </p>
                 </div>
                 <button
-                  onClick={() => setFreeChatEnabled(!freeChatEnabled)}
+                  disabled={isSwitchUpdating}
+                  onClick={handleToggleFreeChat}
                   className={`px-4 py-2 rounded-xl text-xs font-bold transition shadow ${
                     freeChatEnabled ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-700'
                   }`}
@@ -853,7 +969,7 @@ export default function AdminPanelPage() {
 
           {/* Pricing Plans Summary */}
           <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
-            <h3 className="font-bold text-slate-900 text-sm">Active VIP Packages</h3>
+            <h3 className="font-bold text-slate-900 text-sm">Active VIP Packages (Supabase Matrix)</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {pricingPlans.map((plan) => (
                 <div key={plan.id} className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
@@ -907,7 +1023,7 @@ export default function AdminPanelPage() {
                 onClick={() => handleSaveDeliverables(selectedLeadForDeliverable.id)}
                 className="px-5 py-2 bg-emerald-600 text-white rounded-xl font-bold text-xs shadow"
               >
-                Save & Notify Student
+                Save & Sync with Supabase
               </button>
             </div>
           </div>
@@ -961,7 +1077,7 @@ export default function AdminPanelPage() {
                 onClick={handleSaveCollegeFee}
                 className="px-5 py-2 bg-emerald-600 text-white rounded-xl font-bold text-xs shadow"
               >
-                Save Changes
+                Save & Update Supabase
               </button>
             </div>
           </div>

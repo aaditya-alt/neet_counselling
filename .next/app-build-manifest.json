@@ -1,50 +1,129 @@
 {
   "pages": {
-    "/layout": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/css/app/layout.css",
-      "static/chunks/app/layout.js"
+    "/_not-found/page": [
+      "static/chunks/webpack-a2a7106df7a920d1.js",
+      "static/chunks/4bd1b696-c023c6e3521b1417.js",
+      "static/chunks/255-ce8c7c75002f810b.js",
+      "static/chunks/main-app-3d22f47082c55d79.js",
+      "static/chunks/app/_not-found/page-f187ad254cc1b0eb.js"
     ],
     "/not-found": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/not-found.js"
+      "static/chunks/webpack-a2a7106df7a920d1.js",
+      "static/chunks/4bd1b696-c023c6e3521b1417.js",
+      "static/chunks/255-ce8c7c75002f810b.js",
+      "static/chunks/main-app-3d22f47082c55d79.js",
+      "static/chunks/619-ba102abea3e3d0e4.js",
+      "static/chunks/app/not-found-99b9964f9b0941e1.js"
     ],
-    "/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/page.js"
+    "/layout": [
+      "static/chunks/webpack-a2a7106df7a920d1.js",
+      "static/chunks/4bd1b696-c023c6e3521b1417.js",
+      "static/chunks/255-ce8c7c75002f810b.js",
+      "static/chunks/main-app-3d22f47082c55d79.js",
+      "static/css/880bd816645ab691.css",
+      "static/chunks/44530001-6a14ce924906b4cd.js",
+      "static/chunks/281-6ab46a22349f8cff.js",
+      "static/chunks/619-ba102abea3e3d0e4.js",
+      "static/chunks/901-ed048f5f442f6ab7.js",
+      "static/chunks/app/layout-c7589aac7d34649c.js"
     ],
-    "/college-predictor/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/college-predictor/page.js"
-    ],
-    "/counselling/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/counselling/page.js"
-    ],
-    "/rank-predictor/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/rank-predictor/page.js"
+    "/admin/page": [
+      "static/chunks/webpack-a2a7106df7a920d1.js",
+      "static/chunks/4bd1b696-c023c6e3521b1417.js",
+      "static/chunks/255-ce8c7c75002f810b.js",
+      "static/chunks/main-app-3d22f47082c55d79.js",
+      "static/chunks/44530001-6a14ce924906b4cd.js",
+      "static/chunks/281-6ab46a22349f8cff.js",
+      "static/chunks/901-ed048f5f442f6ab7.js",
+      "static/chunks/app/admin/page-da97cb0bda83eba4.js"
     ],
     "/colleges/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/colleges/page.js"
+      "static/chunks/webpack-a2a7106df7a920d1.js",
+      "static/chunks/4bd1b696-c023c6e3521b1417.js",
+      "static/chunks/255-ce8c7c75002f810b.js",
+      "static/chunks/main-app-3d22f47082c55d79.js",
+      "static/chunks/44530001-6a14ce924906b4cd.js",
+      "static/chunks/281-6ab46a22349f8cff.js",
+      "static/chunks/619-ba102abea3e3d0e4.js",
+      "static/chunks/901-ed048f5f442f6ab7.js",
+      "static/chunks/app/colleges/page-1afa97658e3332f1.js"
     ],
     "/compare/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/compare/page.js"
+      "static/chunks/webpack-a2a7106df7a920d1.js",
+      "static/chunks/4bd1b696-c023c6e3521b1417.js",
+      "static/chunks/255-ce8c7c75002f810b.js",
+      "static/chunks/main-app-3d22f47082c55d79.js",
+      "static/chunks/44530001-6a14ce924906b4cd.js",
+      "static/chunks/281-6ab46a22349f8cff.js",
+      "static/chunks/901-ed048f5f442f6ab7.js",
+      "static/chunks/app/compare/page-e45edaf5761e80fb.js"
+    ],
+    "/college-predictor/page": [
+      "static/chunks/webpack-a2a7106df7a920d1.js",
+      "static/chunks/4bd1b696-c023c6e3521b1417.js",
+      "static/chunks/255-ce8c7c75002f810b.js",
+      "static/chunks/main-app-3d22f47082c55d79.js",
+      "static/chunks/44530001-6a14ce924906b4cd.js",
+      "static/chunks/281-6ab46a22349f8cff.js",
+      "static/chunks/901-ed048f5f442f6ab7.js",
+      "static/chunks/app/college-predictor/page-672f2ed83c983e46.js"
+    ],
+    "/counselling/page": [
+      "static/chunks/webpack-a2a7106df7a920d1.js",
+      "static/chunks/4bd1b696-c023c6e3521b1417.js",
+      "static/chunks/255-ce8c7c75002f810b.js",
+      "static/chunks/main-app-3d22f47082c55d79.js",
+      "static/chunks/619-ba102abea3e3d0e4.js",
+      "static/chunks/app/counselling/page-cb62ce7b7c151317.js"
+    ],
+    "/mentors/page": [
+      "static/chunks/webpack-a2a7106df7a920d1.js",
+      "static/chunks/4bd1b696-c023c6e3521b1417.js",
+      "static/chunks/255-ce8c7c75002f810b.js",
+      "static/chunks/main-app-3d22f47082c55d79.js",
+      "static/chunks/44530001-6a14ce924906b4cd.js",
+      "static/chunks/281-6ab46a22349f8cff.js",
+      "static/chunks/901-ed048f5f442f6ab7.js",
+      "static/chunks/app/mentors/page-91485f458cfad24b.js"
+    ],
+    "/page": [
+      "static/chunks/webpack-a2a7106df7a920d1.js",
+      "static/chunks/4bd1b696-c023c6e3521b1417.js",
+      "static/chunks/255-ce8c7c75002f810b.js",
+      "static/chunks/main-app-3d22f47082c55d79.js",
+      "static/chunks/619-ba102abea3e3d0e4.js",
+      "static/chunks/app/page-d7201ba97b310e52.js"
+    ],
+    "/rank-predictor/page": [
+      "static/chunks/webpack-a2a7106df7a920d1.js",
+      "static/chunks/4bd1b696-c023c6e3521b1417.js",
+      "static/chunks/255-ce8c7c75002f810b.js",
+      "static/chunks/main-app-3d22f47082c55d79.js",
+      "static/chunks/44530001-6a14ce924906b4cd.js",
+      "static/chunks/281-6ab46a22349f8cff.js",
+      "static/chunks/619-ba102abea3e3d0e4.js",
+      "static/chunks/901-ed048f5f442f6ab7.js",
+      "static/chunks/app/rank-predictor/page-1c330114a62c3f96.js"
+    ],
+    "/mentor-portal/page": [
+      "static/chunks/webpack-a2a7106df7a920d1.js",
+      "static/chunks/4bd1b696-c023c6e3521b1417.js",
+      "static/chunks/255-ce8c7c75002f810b.js",
+      "static/chunks/main-app-3d22f47082c55d79.js",
+      "static/chunks/44530001-6a14ce924906b4cd.js",
+      "static/chunks/281-6ab46a22349f8cff.js",
+      "static/chunks/901-ed048f5f442f6ab7.js",
+      "static/chunks/app/mentor-portal/page-9d87bfacbe425dc5.js"
     ],
     "/pricing/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/pricing/page.js"
+      "static/chunks/webpack-a2a7106df7a920d1.js",
+      "static/chunks/4bd1b696-c023c6e3521b1417.js",
+      "static/chunks/255-ce8c7c75002f810b.js",
+      "static/chunks/main-app-3d22f47082c55d79.js",
+      "static/chunks/44530001-6a14ce924906b4cd.js",
+      "static/chunks/281-6ab46a22349f8cff.js",
+      "static/chunks/901-ed048f5f442f6ab7.js",
+      "static/chunks/app/pricing/page-0f82a6cc1c72bde3.js"
     ]
   }
 }

@@ -3,23 +3,39 @@
 import React, { useState, useEffect } from 'react';
 import { Sparkles, Check, PhoneCall, ShieldCheck, Zap, UserCheck, Clock, FileText, GraduationCap } from 'lucide-react';
 import { getPricingPlans } from '../../lib/supabase';
+import { MOCK_PRICING } from '../../lib/mockData';
 import { PricingPlan } from '../../types';
 import { logTelemetry } from '../../lib/telemetry';
 
 export default function PricingPage() {
-  const [plans, setPlans] = useState<PricingPlan[]>([]);
+  const [plans, setPlans] = useState<PricingPlan[]>(MOCK_PRICING);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function load() {
-      setLoading(true);
-      const data = await getPricingPlans();
-      setPlans(data);
-      setLoading(false);
-      logTelemetry('premium_page_viewed', { source: 'pricing_page' });
+      try {
+        setLoading(true);
+        const data = await getPricingPlans();
+        if (Array.isArray(data) && data.length > 0) {
+          setPlans(data);
+        } else {
+          setPlans(MOCK_PRICING);
+        }
+      } catch (err) {
+        console.error('Failed to load dynamic pricing, using verified fallback:', err);
+        setPlans(MOCK_PRICING);
+      } finally {
+        setLoading(false);
+      }
+
+      try {
+        logTelemetry('premium_page_viewed', { source: 'pricing_page' });
+      } catch {}
     }
     load();
   }, []);
+
+  const safePlans = Array.isArray(plans) && plans.length > 0 ? plans : MOCK_PRICING;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-12">
@@ -38,12 +54,16 @@ export default function PricingPage() {
 
       {/* Pricing Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-stretch">
-        {plans.map((plan, idx) => {
-          const isFeatured = plan.id === 'pvt_budget' || idx === 1;
+        {safePlans.map((plan, idx) => {
+          const isFeatured = plan?.id === 'pvt_budget' || idx === 1;
+          const offerPrice = typeof plan?.offer_price === 'number' ? plan.offer_price : 2999;
+          const basePrice = typeof plan?.base_price === 'number' ? plan.base_price : 4999;
+          const discountPct = typeof plan?.discount_pct === 'number' ? plan.discount_pct : 40;
+          const featuresList = Array.isArray(plan?.features) ? plan.features : [];
 
           return (
             <div
-              key={plan.id}
+              key={plan?.id || `plan_${idx}`}
               className={`rounded-3xl p-8 flex flex-col justify-between transition-all relative ${
                 isFeatured
                   ? 'bg-gradient-to-b from-navy-950 to-slate-900 text-white shadow-2xl border-2 border-emerald-400 transform md:-translate-y-2'
@@ -59,17 +79,17 @@ export default function PricingPage() {
               <div className="space-y-6">
                 <div>
                   <h3 className={`text-xl font-bold ${isFeatured ? 'text-white' : 'text-slate-900'}`}>
-                    {plan.title}
+                    {plan?.title || 'Counselling Plan'}
                   </h3>
                   <div className="flex items-baseline gap-2 mt-4">
                     <span className="text-3xl sm:text-4xl font-black">
-                      ₹{plan.offer_price.toLocaleString('en-IN')}
+                      ₹{offerPrice.toLocaleString('en-IN')}
                     </span>
                     <span className={`text-sm line-through ${isFeatured ? 'text-slate-400' : 'text-slate-400'}`}>
-                      ₹{plan.base_price.toLocaleString('en-IN')}
+                      ₹{basePrice.toLocaleString('en-IN')}
                     </span>
                     <span className="text-xs font-bold text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded">
-                      {plan.discount_pct}% OFF
+                      {discountPct}% OFF
                     </span>
                   </div>
                   <div className={`text-xs mt-1 ${isFeatured ? 'text-slate-300' : 'text-slate-500'}`}>
@@ -79,7 +99,7 @@ export default function PricingPage() {
 
                 <div className={`border-t ${isFeatured ? 'border-slate-800' : 'border-slate-100'} pt-4`}>
                   <ul className="space-y-3 text-xs">
-                    {plan.features.map((feat, fidx) => (
+                    {featuresList.map((feat, fidx) => (
                       <li key={fidx} className="flex items-start gap-2.5">
                         <Check className={`w-4 h-4 flex-shrink-0 mt-0.5 ${isFeatured ? 'text-emerald-400' : 'text-emerald-600'}`} />
                         <span className={isFeatured ? 'text-slate-200' : 'text-slate-700'}>{feat}</span>
@@ -92,7 +112,11 @@ export default function PricingPage() {
               <div className="pt-8 space-y-3">
                 <a
                   href="tel:+918544637096"
-                  onClick={() => logTelemetry('premium_page_viewed', { plan_id: plan.id, action: 'call_to_enroll' })}
+                  onClick={() => {
+                    try {
+                      logTelemetry('premium_page_viewed', { plan_id: plan?.id, action: 'call_to_enroll' });
+                    } catch {}
+                  }}
                   className={`w-full py-3.5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all shadow ${
                     isFeatured
                       ? 'bg-emerald-500 hover:bg-emerald-600 text-navy-950 font-black'
