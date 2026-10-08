@@ -1,22 +1,44 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { ALL_INDIA_COUNSELLING_AUTHORITIES, CounsellingAuthority } from '@/lib/counsellingData';
+import { getCounsellingAuthorities } from '@/lib/supabase';
+import { logTelemetry } from '@/lib/telemetry';
 
 export default function CounsellingGuidePage() {
+  const [authorities, setAuthorities] = useState<CounsellingAuthority[]>(ALL_INDIA_COUNSELLING_AUTHORITIES);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedType, setSelectedType] = useState<string>('all');
   const [openStateOnly, setOpenStateOnly] = useState(false);
   const [selectedAuthority, setSelectedAuthority] = useState<CounsellingAuthority | null>(null);
 
+  useEffect(() => {
+    async function load() {
+      try {
+        const data = await getCounsellingAuthorities();
+        if (Array.isArray(data) && data.length > 0) {
+          setAuthorities(data);
+        }
+      } catch (err) {
+        console.error('Error loading dynamic counselling directory:', err);
+      }
+      try {
+        logTelemetry('college_viewed', { section: 'counselling_directory' });
+      } catch {}
+    }
+    load();
+  }, []);
+
+  const safeAuthorities = Array.isArray(authorities) && authorities.length > 0 ? authorities : ALL_INDIA_COUNSELLING_AUTHORITIES;
+
   const filteredAuthorities = useMemo(() => {
-    return ALL_INDIA_COUNSELLING_AUTHORITIES.filter((item) => {
+    return safeAuthorities.filter((item) => {
       const matchesSearch =
         item.state.toLowerCase().includes(searchQuery.toLowerCase()) ||
         item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         item.short_code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.courses.some((c) => c.toLowerCase().includes(searchQuery.toLowerCase()));
+        (Array.isArray(item.courses) && item.courses.some((c) => c.toLowerCase().includes(searchQuery.toLowerCase())));
 
       const matchesType =
         selectedType === 'all' ? true : item.type === selectedType;
@@ -25,7 +47,7 @@ export default function CounsellingGuidePage() {
 
       return matchesSearch && matchesType && matchesOpen;
     });
-  }, [searchQuery, selectedType, openStateOnly]);
+  }, [safeAuthorities, searchQuery, selectedType, openStateOnly]);
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 pb-20">

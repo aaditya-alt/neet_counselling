@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { OFFICIAL_MCC_2026_COLLEGES, OFFICIAL_MCC_2026_CUTOFFS } from './mccData';
 import { MOCK_MENTORS, MOCK_PRICING } from './mockData';
+import { ALL_INDIA_COUNSELLING_AUTHORITIES, CounsellingAuthority } from './counsellingData';
 import { College, Cutoff, Mentor, PricingPlan, LeadTier } from '../types';
 
 export const SUPABASE_URL = 'https://ersltbjphlrefxqidbcr.supabase.co';
@@ -199,6 +200,27 @@ export async function updatePricingPlans(plans: PricingPlan[]): Promise<boolean>
   return setSystemConfig('pricing_matrix', plans);
 }
 
+export async function updatePricingPlan(id: string, updates: Partial<PricingPlan>): Promise<boolean> {
+  const current = await getPricingPlans();
+  const updated = current.map(p => p.id === id ? { ...p, ...updates } : p);
+  return updatePricingPlans(updated);
+}
+
+// Dynamic Counselling Directory (36+ State & Central Authorities)
+export async function getCounsellingAuthorities(): Promise<CounsellingAuthority[]> {
+  const list = await getSystemConfig<CounsellingAuthority[]>('counselling_directory', ALL_INDIA_COUNSELLING_AUTHORITIES);
+  if (Array.isArray(list) && list.length > 0) {
+    return list;
+  }
+  return ALL_INDIA_COUNSELLING_AUTHORITIES;
+}
+
+export async function updateCounsellingAuthority(id: string, updates: Partial<CounsellingAuthority>): Promise<boolean> {
+  const current = await getCounsellingAuthorities();
+  const updated = current.map(a => a.id === id ? { ...a, ...updates } : a);
+  return setSystemConfig('counselling_directory', updated);
+}
+
 export async function getFeatureFlags(): Promise<{ peak_mode: boolean; free_chat_enabled: boolean }> {
   const flags = await getSystemConfig<{ peak_mode: boolean; free_chat_enabled: boolean }>(
     'feature_flags',
@@ -254,7 +276,7 @@ export async function getStudentDeliverables(): Promise<StudentDeliverable[]> {
   const defaultDeliverables: StudentDeliverable[] = [
     {
       id: 'del_1',
-      studentId: 'st_1',
+      studentId: '00000000-0000-0000-0000-000000000011',
       studentName: 'Aarav Mehra',
       phoneNumber: '+91 85446 37096',
       score: 645,
@@ -268,25 +290,25 @@ export async function getStudentDeliverables(): Promise<StudentDeliverable[]> {
       choiceList: [
         {
           id: 'ch_1',
-          collegeId: 'b0000000-0000-0000-0000-000000000002',
-          collegeName: 'Maulana Azad Medical College (MAMC)',
+          collegeId: 'e53b4cd0-eed8-42d9-9983-e7a744478ccd',
+          collegeName: 'Maulana Azad Medical College (MAMC New Delhi)',
           state: 'Delhi',
           course: 'MBBS',
           quota: 'AIQ_15',
           priorityOrder: 1,
-          annualFee: 4445,
-          mentorTip: 'Top AIQ choice with exceptional clinical OPD and internal PG quota'
+          annualFee: 4500,
+          mentorTip: 'Top AIQ choice with massive clinical OPD and internal PG quota advantage'
         },
         {
           id: 'ch_2',
-          collegeId: 'b0000000-0000-0000-0000-000000000004',
-          collegeName: 'King George Medical University (KGMU)',
-          state: 'Uttar Pradesh',
+          collegeId: '8bb8161f-eaaf-4ab7-aa40-86c5af393c1d',
+          collegeName: 'Vardhman Mahavir Medical College & Safdarjung Hospital (VMMC Delhi)',
+          state: 'Delhi',
           course: 'MBBS',
           quota: 'AIQ_15',
           priorityOrder: 2,
-          annualFee: 54600,
-          mentorTip: '4500 beds patient flow, great high-volume surgical exposure'
+          annualFee: 38000,
+          mentorTip: '2900 hospital beds, high volume emergency exposure, IPU reservation'
         }
       ],
       status: {
@@ -296,52 +318,37 @@ export async function getStudentDeliverables(): Promise<StudentDeliverable[]> {
       },
       round: 1,
       updatedAt: new Date().toISOString()
-    },
-    {
-      id: 'del_2',
-      studentId: 'st_2',
-      studentName: 'Sneha Patel',
-      phoneNumber: '+91 99201 88900',
-      score: 585,
-      rank: 42000,
-      state: 'Maharashtra',
-      assignedMentorId: 'a0000000-0000-0000-0000-000000000002',
-      assignedMentorName: 'Rahul Sharma (State Counselling Lead)',
-      isPremium: true,
-      meetingLink: 'https://meet.google.com/neet-vip-sneha',
-      choicePdfUrl: '',
-      choiceList: [],
-      status: {
-        choice_list_sent: false,
-        video_call_done: false,
-        seat_allotted: false
-      },
-      round: 1,
-      updatedAt: new Date().toISOString()
-    },
-    {
-      id: 'del_3',
-      studentId: 'st_3',
-      studentName: 'Rohan Deshmukh',
-      phoneNumber: '+91 94432 11223',
-      score: 510,
-      rank: 98000,
-      state: 'Karnataka',
-      assignedMentorId: 'a0000000-0000-0000-0000-000000000001',
-      assignedMentorName: 'Aaditya Ranjan (Senior AIQ Lead)',
-      isPremium: true,
-      meetingLink: 'https://meet.google.com/neet-vip-rohan',
-      choicePdfUrl: '',
-      choiceList: [],
-      status: {
-        choice_list_sent: false,
-        video_call_done: false,
-        seat_allotted: false
-      },
-      round: 1,
-      updatedAt: new Date().toISOString()
     }
   ];
+
+  try {
+    const { data, error } = await supabase
+      .from('student_deliverables')
+      .select('*')
+      .order('updated_at', { ascending: false });
+    if (!error && data && data.length > 0) {
+      const mapped = data.map((d: any) => ({
+        id: d.id,
+        studentId: d.student_id,
+        studentName: d.student_name,
+        phoneNumber: d.phone_number || '+91 85446 37096',
+        score: d.score || 600,
+        rank: d.rank || 10000,
+        state: d.state || 'Delhi',
+        assignedMentorId: d.assigned_mentor_id || 'a0000000-0000-0000-0000-000000000001',
+        assignedMentorName: d.assigned_mentor_name || 'Aaditya Ranjan (Senior AIQ Lead)',
+        isPremium: d.is_premium ?? true,
+        meetingLink: d.meeting_link || '',
+        choicePdfUrl: d.choice_pdf_url || '',
+        choiceList: Array.isArray(d.choice_list) ? d.choice_list : [],
+        status: d.status || { choice_list_sent: false, video_call_done: false, seat_allotted: false },
+        round: d.round || 1,
+        updatedAt: d.updated_at || new Date().toISOString()
+      }));
+      setLocal('deliverables_queue', mapped);
+      return mapped;
+    }
+  } catch {}
 
   try {
     const { data, error } = await supabase
@@ -366,6 +373,28 @@ export async function saveStudentDeliverable(deliverable: StudentDeliverable): P
     : [deliverable, ...current];
 
   setLocal('deliverables_queue', updated);
+
+  try {
+    await supabase.from('student_deliverables').upsert({
+      id: deliverable.id,
+      student_id: deliverable.studentId,
+      student_name: deliverable.studentName,
+      phone_number: deliverable.phoneNumber,
+      score: deliverable.score,
+      rank: deliverable.rank,
+      state: deliverable.state,
+      assigned_mentor_id: deliverable.assignedMentorId,
+      assigned_mentor_name: deliverable.assignedMentorName,
+      is_premium: deliverable.isPremium,
+      meeting_link: deliverable.meetingLink,
+      choice_pdf_url: deliverable.choicePdfUrl,
+      choice_list: deliverable.choiceList,
+      status: deliverable.status,
+      round: deliverable.round,
+      updated_at: new Date().toISOString()
+    });
+  } catch {}
+
   try {
     await supabase.from('system_configs').upsert({
       key: 'deliverables_queue',
@@ -376,15 +405,73 @@ export async function saveStudentDeliverable(deliverable: StudentDeliverable): P
   return true;
 }
 
+// 5b. CRM STUDENT LEADS
+export interface StudentLeadCRM {
+  id: string;
+  student_name: string;
+  phone_number: string;
+  neet_score: number;
+  air_rank: number;
+  domicile_state: string;
+  lead_score: number;
+  lead_tier: LeadTier;
+  assigned_mentor_name?: string;
+  assigned_mentor_id?: string;
+  is_premium: boolean;
+  predictor_runs: number;
+  comparisons_run: number;
+  viewed_premium_times: number;
+  meeting_link?: string;
+  choice_filling_pdf_url?: string;
+  deliverables_status?: {
+    choice_list_sent: boolean;
+    video_call_done: boolean;
+    seat_allotted: boolean;
+  };
+  created_at: string;
+}
+
+export async function getStudentLeads(): Promise<StudentLeadCRM[]> {
+  try {
+    const { data, error } = await supabase
+      .from('student_leads_crm')
+      .select('*, profile:profiles(*), mentor:mentors(*)');
+    if (!error && data && data.length > 0) {
+      return data.map((d: any) => ({
+        id: d.id,
+        student_name: d.profile?.full_name || 'NEET Aspirant',
+        phone_number: d.profile?.phone_number || '+91 85446 37096',
+        neet_score: d.profile?.neet_score || 600,
+        air_rank: d.profile?.air_rank || 10000,
+        domicile_state: d.profile?.domicile_state || 'Delhi',
+        lead_score: d.lead_score || 50,
+        lead_tier: (d.lead_tier || 'warm') as LeadTier,
+        assigned_mentor_id: d.assigned_mentor_id,
+        assigned_mentor_name: d.mentor?.full_name,
+        is_premium: d.is_premium ?? false,
+        predictor_runs: d.predictor_runs || 1,
+        comparisons_run: d.comparisons_run || 0,
+        viewed_premium_times: d.viewed_premium_times || 0,
+        admin_notes: d.admin_notes,
+        created_at: d.created_at || 'Just now'
+      }));
+    }
+  } catch {}
+  return [];
+}
+
 // 6. REAL-TIME CHAT MESSAGES
 export interface ChatMessage {
   id: string;
   studentId: string;
-  mentorId: string;
-  sender: 'student' | 'mentor';
-  text: string;
-  time: string;
-  createdAt: string;
+  mentorId?: string;
+  sender?: 'student' | 'mentor';
+  senderType?: 'student' | 'mentor';
+  text?: string;
+  message?: string;
+  time?: string;
+  timestamp?: string;
+  createdAt?: string;
 }
 
 export async function getLiveChatMessages(studentId: string): Promise<ChatMessage[]> {
@@ -394,8 +481,11 @@ export async function getLiveChatMessages(studentId: string): Promise<ChatMessag
       studentId: 'st_1',
       mentorId: 'a0000000-0000-0000-0000-000000000001',
       sender: 'mentor',
+      senderType: 'mentor',
       text: 'Hello Aarav! I have generated your customized Round 1 AIQ & Delhi state choice sequence. Let me know if you want to swap KGMU or VMMC.',
+      message: 'Hello Aarav! I have generated your customized Round 1 AIQ & Delhi state choice sequence. Let me know if you want to swap KGMU or VMMC.',
       time: '10:30 AM',
+      timestamp: new Date().toISOString(),
       createdAt: new Date().toISOString()
     },
     {
@@ -403,8 +493,11 @@ export async function getLiveChatMessages(studentId: string): Promise<ChatMessag
       studentId: 'st_1',
       mentorId: 'a0000000-0000-0000-0000-000000000001',
       sender: 'student',
+      senderType: 'student',
       text: 'Thank you Sir! What should be my #1 priority between MAMC and VMMC?',
+      message: 'Thank you Sir! What should be my #1 priority between MAMC and VMMC?',
       time: '10:35 AM',
+      timestamp: new Date().toISOString(),
       createdAt: new Date().toISOString()
     },
     {
@@ -412,8 +505,11 @@ export async function getLiveChatMessages(studentId: string): Promise<ChatMessag
       studentId: 'st_1',
       mentorId: 'a0000000-0000-0000-0000-000000000001',
       sender: 'mentor',
+      senderType: 'mentor',
       text: 'Keep MAMC as Choice 1 for its massive clinical bed volume and internal PG quota.',
+      message: 'Keep MAMC as Choice 1 for its massive clinical bed volume and internal PG quota.',
       time: '10:40 AM',
+      timestamp: new Date().toISOString(),
       createdAt: new Date().toISOString()
     }
   ];
@@ -424,15 +520,23 @@ export async function getLiveChatMessages(studentId: string): Promise<ChatMessag
       .select('*')
       .order('created_at', { ascending: true });
     if (!error && data && data.length > 0) {
-      return data.map(d => ({
-        id: d.id,
-        studentId: d.student_id || studentId,
-        mentorId: d.mentor_id || 'a0000000-0000-0000-0000-000000000001',
-        sender: d.sender_type || (d.sender_id === studentId ? 'student' : 'mentor'),
-        text: d.message,
-        time: new Date(d.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        createdAt: d.created_at
-      }));
+      return data.map(d => {
+        const sType = d.sender_type || (d.sender_id === studentId ? 'student' : 'mentor');
+        const txt = d.message || d.text || '';
+        const tStr = new Date(d.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        return {
+          id: d.id,
+          studentId: d.student_id || studentId,
+          mentorId: d.mentor_id || 'a0000000-0000-0000-0000-000000000001',
+          sender: sType,
+          senderType: sType,
+          text: txt,
+          message: txt,
+          time: tStr,
+          timestamp: d.created_at,
+          createdAt: d.created_at
+        };
+      });
     }
   } catch {}
 
@@ -440,14 +544,37 @@ export async function getLiveChatMessages(studentId: string): Promise<ChatMessag
   return local;
 }
 
-export async function sendLiveChatMessage(studentId: string, mentorId: string, sender: 'student' | 'mentor', text: string): Promise<ChatMessage> {
+export async function sendLiveChatMessage(
+  studentId: string, 
+  senderOrMentor: string, 
+  textOrSender: string, 
+  possibleText?: string
+): Promise<ChatMessage> {
+  let sender: 'student' | 'mentor' = 'student';
+  let text = '';
+  let mentorId = 'a0000000-0000-0000-0000-000000000001';
+
+  if (possibleText !== undefined) {
+    // Called as: (studentId, mentorId, sender, text)
+    mentorId = senderOrMentor;
+    sender = textOrSender as any;
+    text = possibleText;
+  } else {
+    // Called as: (studentId, sender, text)
+    sender = senderOrMentor as any;
+    text = textOrSender;
+  }
+
   const newMsg: ChatMessage = {
     id: `msg_${Date.now()}`,
     studentId,
     mentorId,
     sender,
+    senderType: sender,
     text,
+    message: text,
     time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    timestamp: new Date().toISOString(),
     createdAt: new Date().toISOString()
   };
 
@@ -457,6 +584,8 @@ export async function sendLiveChatMessage(studentId: string, mentorId: string, s
 
   try {
     await supabase.from('chat_messages').insert({
+      student_id: studentId,
+      mentor_id: mentorId,
       message: text,
       created_at: newMsg.createdAt,
       sender_type: sender,

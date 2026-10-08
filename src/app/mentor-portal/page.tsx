@@ -38,9 +38,19 @@ import {
   ChoiceFillingItem,
   getLiveChatMessages,
   sendLiveChatMessage,
-  ChatMessage
+  ChatMessage,
+  getFeatureFlags
 } from '../../lib/supabase';
 import { College } from '../../types';
+
+interface FreeInquiry {
+  id: string;
+  name: string;
+  phone: string;
+  question: string;
+  time: string;
+  replies: string[];
+}
 
 export default function MentorPortalPage() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
@@ -51,11 +61,13 @@ export default function MentorPortalPage() {
   const [colleges, setColleges] = useState<College[]>([]);
   const [deliverables, setDeliverables] = useState<StudentDeliverable[]>([]);
   const [selectedStudent, setSelectedStudent] = useState<StudentDeliverable | null>(null);
+  const [freeChatEnabled, setFreeChatEnabled] = useState<boolean>(true);
 
   // Active Tab in Workspace
-  const [mentorTab, setMentorTab] = useState<'choice_builder' | 'chat' | 'deliverables'>('choice_builder');
+  const [mentorTab, setMentorTab] = useState<'choice_builder' | 'chat' | 'free_inquiries' | 'deliverables'>('choice_builder');
 
   // Choice Filling Builder State
+  const [selectedCollegeId, setSelectedCollegeId] = useState<string>('');
   const [collegeSearch, setCollegeSearch] = useState('');
   const [selectedCourse, setSelectedCourse] = useState('MBBS');
   const [selectedQuota, setSelectedQuota] = useState('AIQ_15');
@@ -66,6 +78,27 @@ export default function MentorPortalPage() {
   // Chat State
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState('');
+
+  // Free Inquiries State
+  const [freeInquiries, setFreeInquiries] = useState<FreeInquiry[]>([
+    {
+      id: 'inq_1',
+      name: 'Sahil Tanwar',
+      phone: '+91 98112 34567',
+      question: 'With 612 marks in UP state quota, will I get GMC Gorakhpur or GMC Basti in Round 2?',
+      time: '15m ago',
+      replies: ['GMC Gorakhpur closing was 621 in R1, but GMC Basti is very safe for your rank in R2. Recommend filling Basti right after Ayodhya.'],
+    },
+    {
+      id: 'inq_2',
+      name: 'Riya Sen',
+      phone: '+91 97321 88990',
+      question: 'Is ₹2 Lakh deemed deposit refundable if I do not report to allotted college in Round 2?',
+      time: '45m ago',
+      replies: ['No! In Round 2 of MCC, if you are allotted a seat and do not report, your ₹2,00,000 security deposit is forfeited! Be extremely cautious.'],
+    }
+  ]);
+  const [freeReplyInput, setFreeReplyInput] = useState<{ [key: string]: string }>({});
 
   // Video Meeting Link
   const [meetLinkInput, setMeetLinkInput] = useState('');
@@ -79,20 +112,31 @@ export default function MentorPortalPage() {
   }, []);
 
   const loadMentorWorkspace = async () => {
-    const [colls, dels] = await Promise.all([
-      getColleges(),
-      getStudentDeliverables(),
-    ]);
-    setColleges(colls);
-    setDeliverables(dels);
-    if (dels.length > 0) {
-      const first = dels[0];
-      setSelectedStudent(first);
-      setWorkingChoices(first.choiceList || []);
-      setMeetLinkInput(first.meetingLink || '');
-      setPdfLinkInput(first.choicePdfUrl || '');
-      const msgs = await getLiveChatMessages(first.studentId);
-      setChatMessages(msgs);
+    try {
+      const [colls, dels, flags] = await Promise.all([
+        getColleges().catch(() => []),
+        getStudentDeliverables().catch(() => []),
+        getFeatureFlags().catch(() => ({ peak_mode: false, free_chat_enabled: true })),
+      ]);
+      setColleges(Array.isArray(colls) ? colls : []);
+      setDeliverables(Array.isArray(dels) ? dels : []);
+      setFreeChatEnabled(flags.free_chat_enabled && !flags.peak_mode);
+
+      if (Array.isArray(colls) && colls.length > 0) {
+        setSelectedCollegeId(colls[0].id);
+      }
+
+      if (Array.isArray(dels) && dels.length > 0) {
+        const first = dels[0];
+        setSelectedStudent(first);
+        setWorkingChoices(first.choiceList || []);
+        setMeetLinkInput(first.meetingLink || '');
+        setPdfLinkInput(first.choicePdfUrl || '');
+        const msgs = await getLiveChatMessages(first.studentId).catch(() => []);
+        setChatMessages(Array.isArray(msgs) ? msgs : []);
+      }
+    } catch (err) {
+      console.error('Error loading mentor workspace:', err);
     }
   };
 
@@ -199,17 +243,28 @@ export default function MentorPortalPage() {
     e.preventDefault();
     if (!chatInput.trim() || !selectedStudent) return;
 
-    const text = chatInput;
+    const text = chatInput.trim();
     setChatInput('');
 
     const newMsg = await sendLiveChatMessage(
       selectedStudent.studentId,
-      selectedStudent.assignedMentorId,
       'mentor',
       text
     );
 
     setChatMessages(prev => [...prev, newMsg]);
+  };
+
+  const handleSendFreeReply = (inquiryId: string) => {
+    const text = freeReplyInput[inquiryId];
+    if (!text || !text.trim()) return;
+
+    setFreeInquiries(prev => prev.map(inq => inq.id === inquiryId ? {
+      ...inq,
+      replies: [...inq.replies, text.trim()]
+    } : inq));
+
+    setFreeReplyInput({ ...freeReplyInput, [inquiryId]: '' });
   };
 
   if (!isAuthenticated) {
@@ -374,7 +429,7 @@ export default function MentorPortalPage() {
               </div>
 
               {/* Workspace Navigation Tabs */}
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   onClick={() => setMentorTab('choice_builder')}
                   className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
@@ -389,7 +444,20 @@ export default function MentorPortalPage() {
                     mentorTab === 'chat' ? 'bg-navy-950 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                   }`}
                 >
-                  <MessageSquare className="w-3.5 h-3.5" /> Live Chat ({chatMessages.length})
+                  <MessageSquare className="w-3.5 h-3.5" /> VIP 1-on-1 Chat ({chatMessages.length})
+                </button>
+                <button
+                  onClick={() => setMentorTab('free_inquiries')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                    mentorTab === 'free_inquiries' ? 'bg-navy-950 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  }`}
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-500" /> Free Inquiries ({freeInquiries.length})
+                  {freeChatEnabled ? (
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  ) : (
+                    <span className="text-[9px] bg-rose-100 text-rose-800 font-bold px-1.5 py-0.2 rounded">LOCKED</span>
+                  )}
                 </button>
               </div>
             </div>
@@ -405,84 +473,84 @@ export default function MentorPortalPage() {
                       Add Colleges to {selectedStudent.studentName}'s Sequence
                     </div>
                     <span className="text-xs text-slate-400 font-semibold">
-                      Drag / Reorder in priority order
+                      Dropdown / Search • Reorder in priority order
                     </span>
                   </div>
 
-                  {/* College Picker Controls */}
-                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
-                    <div className="sm:col-span-6 relative">
-                      <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+                  {/* College Dropdown & Parameters */}
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 mb-1 block">
+                        Select Medical College (Dropdown Selection)
+                      </label>
+                      <select
+                        value={selectedCollegeId}
+                        onChange={(e) => setSelectedCollegeId(e.target.value)}
+                        className="w-full px-3.5 py-2.5 text-xs font-bold border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 bg-white"
+                      >
+                        {colleges.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name} ({c.city}, {c.state}) — Fee: ₹{c.annual_tuition_fee.toLocaleString()}/yr [{c.type.toUpperCase()}]
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-xs font-bold text-slate-700 mb-1 block">Quota Category</label>
+                        <select
+                          value={selectedQuota}
+                          onChange={(e) => setSelectedQuota(e.target.value)}
+                          className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 bg-white font-semibold"
+                        >
+                          <option value="AIQ_15">All India 15% Quota (AIQ)</option>
+                          <option value="STATE_85">State 85% Domicile Quota</option>
+                          <option value="DEEMED_100">100% Deemed Universities</option>
+                          <option value="MANAGEMENT">Management / Private Open Quota</option>
+                          <option value="NRI">NRI / Foreign Ward Quota</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-xs font-bold text-slate-700 mb-1 block">Course</label>
+                        <select
+                          value={selectedCourse}
+                          onChange={(e) => setSelectedCourse(e.target.value)}
+                          className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 bg-white font-semibold"
+                        >
+                          <option value="MBBS">MBBS (Medicine & Surgery)</option>
+                          <option value="BDS">BDS (Dental Surgery)</option>
+                          <option value="BAMS">BAMS (Ayurvedic Medicine)</option>
+                          <option value="BHMS">BHMS (Homeopathy)</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Custom Tip Input */}
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 mb-1 block">
+                        Senior Mentor Advice for this College
+                      </label>
                       <input
                         type="text"
-                        placeholder="Search college (e.g. MAMC, AIIMS, KMC, KGMU)..."
-                        value={collegeSearch}
-                        onChange={(e) => setCollegeSearch(e.target.value)}
-                        className="w-full pl-9 pr-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 bg-white"
+                        placeholder="e.g. Excellent clinical exposure, internal PG quota advantage, ₹0 bond penalty..."
+                        value={customTip}
+                        onChange={(e) => setCustomTip(e.target.value)}
+                        className="w-full px-3.5 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 bg-white"
                       />
                     </div>
-                    <div className="sm:col-span-3">
-                      <select
-                        value={selectedQuota}
-                        onChange={(e) => setSelectedQuota(e.target.value)}
-                        className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 bg-white font-semibold"
-                      >
-                        <option value="AIQ_15">AIQ 15%</option>
-                        <option value="STATE_85">State 85% Domicile</option>
-                        <option value="DEEMED_100">Deemed 100%</option>
-                        <option value="MANAGEMENT">Management / Private</option>
-                      </select>
-                    </div>
-                    <div className="sm:col-span-3">
-                      <select
-                        value={selectedCourse}
-                        onChange={(e) => setSelectedCourse(e.target.value)}
-                        className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 bg-white font-semibold"
-                      >
-                        <option value="MBBS">MBBS</option>
-                        <option value="BDS">BDS Dental</option>
-                        <option value="BAMS">BAMS Ayurvedic</option>
-                        <option value="BHMS">BHMS Homeopathy</option>
-                      </select>
-                    </div>
-                  </div>
 
-                  {/* College Results Dropdown Quick Add */}
-                  {collegeSearch.trim().length > 1 && (
-                    <div className="max-h-48 overflow-y-auto border border-slate-200 rounded-xl divide-y divide-slate-100 bg-slate-50">
-                      {colleges
-                        .filter(c => c.name.toLowerCase().includes(collegeSearch.toLowerCase()) || c.state.toLowerCase().includes(collegeSearch.toLowerCase()))
-                        .slice(0, 6)
-                        .map(coll => (
-                          <div key={coll.id} className="p-3 flex items-center justify-between hover:bg-white transition text-xs">
-                            <div>
-                              <div className="font-bold text-slate-900">{coll.name}</div>
-                              <div className="text-[11px] text-slate-500">{coll.city}, {coll.state} • ₹{coll.annual_tuition_fee.toLocaleString()}/yr</div>
-                            </div>
-                            <button
-                              onClick={() => {
-                                handleAddChoice(coll);
-                                setCollegeSearch('');
-                              }}
-                              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-xs flex items-center gap-1 shadow-sm"
-                            >
-                              <Plus className="w-3.5 h-3.5" /> Add Choice
-                            </button>
-                          </div>
-                        ))}
-                    </div>
-                  )}
-
-                  {/* Custom Tip Input */}
-                  <div>
-                    <label className="text-xs font-bold text-slate-700 mb-1 block">Mentor Strategic Advice for Next Choice</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Keep as top preference due to internal PG quota and 2800 hospital beds..."
-                      value={customTip}
-                      onChange={(e) => setCustomTip(e.target.value)}
-                      className="w-full px-3.5 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 bg-white"
-                    />
+                    <button
+                      onClick={() => {
+                        const targetCollege = colleges.find(c => c.id === selectedCollegeId) || colleges[0];
+                        if (targetCollege) {
+                          handleAddChoice(targetCollege);
+                        }
+                      }}
+                      className="w-full py-2.5 bg-navy-950 hover:bg-slate-900 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow transition"
+                    >
+                      <Plus className="w-4 h-4 text-emerald-400" /> Add Selected College to Priority Ladder
+                    </button>
                   </div>
                 </div>
 
@@ -503,7 +571,7 @@ export default function MentorPortalPage() {
 
                   {workingChoices.length === 0 ? (
                     <div className="text-center py-12 text-slate-400 text-xs">
-                      No colleges added yet. Use the search box above to add colleges to this student's choice filling order.
+                      No colleges added yet. Use the dropdown above to add colleges to this student's choice filling order.
                     </div>
                   ) : (
                     <div className="space-y-3">
@@ -562,13 +630,13 @@ export default function MentorPortalPage() {
               </div>
             )}
 
-            {/* TAB 2: REAL-TIME CHAT */}
+            {/* TAB 2: REAL-TIME VIP CHAT */}
             {mentorTab === 'chat' && (
               <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-[480px]">
                 <div className="p-3.5 bg-slate-900 text-white flex items-center justify-between text-xs font-bold">
                   <div className="flex items-center gap-2">
                     <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
-                    <span>Live Chat Session with {selectedStudent.studentName}</span>
+                    <span>VIP 1-on-1 Chat with {selectedStudent.studentName}</span>
                   </div>
                   <a href={`tel:${selectedStudent.phoneNumber}`} className="text-emerald-400 hover:underline">
                     Call: {selectedStudent.phoneNumber}
@@ -576,24 +644,32 @@ export default function MentorPortalPage() {
                 </div>
 
                 <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-slate-50">
-                  {chatMessages.map((m) => (
-                    <div key={m.id} className={`flex flex-col ${m.sender === 'mentor' ? 'items-end' : 'items-start'}`}>
-                      <div className={`p-3.5 rounded-2xl text-xs max-w-[80%] leading-relaxed ${
-                        m.sender === 'mentor'
-                          ? 'bg-emerald-700 text-white rounded-br-none'
-                          : 'bg-white text-slate-800 border border-slate-200 rounded-bl-none shadow-sm'
-                      }`}>
-                        {m.text}
-                      </div>
-                      <span className="text-[10px] text-slate-400 mt-0.5 px-1">{m.time}</span>
+                  {chatMessages.length === 0 ? (
+                    <div className="text-center py-12 text-slate-400 text-xs">
+                      No chat messages yet. Start your conversation below.
                     </div>
-                  ))}
+                  ) : (
+                    chatMessages.map((m) => (
+                      <div key={m.id} className={`flex flex-col ${m.senderType === 'mentor' ? 'items-end' : 'items-start'}`}>
+                        <div className={`p-3.5 rounded-2xl text-xs max-w-[80%] leading-relaxed ${
+                          m.senderType === 'mentor'
+                            ? 'bg-emerald-700 text-white rounded-br-none'
+                            : 'bg-white text-slate-800 border border-slate-200 rounded-bl-none shadow-sm'
+                        }`}>
+                          {m.message}
+                        </div>
+                        <span className="text-[10px] text-slate-400 mt-0.5 px-1">
+                          {m.time || (m.timestamp ? new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '')}
+                        </span>
+                      </div>
+                    ))
+                  )}
                 </div>
 
                 <form onSubmit={handleSendChatMessage} className="p-3 bg-white border-t border-slate-200 flex gap-2">
                   <input
                     type="text"
-                    placeholder={`Type response to ${selectedStudent.studentName}...`}
+                    placeholder={`Type VIP advice to ${selectedStudent.studentName}...`}
                     value={chatInput}
                     onChange={(e) => setChatInput(e.target.value)}
                     className="flex-1 px-4 py-2.5 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
@@ -602,9 +678,80 @@ export default function MentorPortalPage() {
                     type="submit"
                     className="px-5 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold shadow transition flex items-center gap-1.5"
                   >
-                    <Send className="w-3.5 h-3.5" /> Send
+                    <Send className="w-3.5 h-3.5" /> Send VIP
                   </button>
                 </form>
+              </div>
+            )}
+
+            {/* TAB 3: FREE INQUIRIES CHAT (ADMIN CONTROLLED) */}
+            {mentorTab === 'free_inquiries' && (
+              <div className="space-y-4">
+                {!freeChatEnabled ? (
+                  <div className="p-6 bg-amber-50 border border-amber-300 rounded-2xl text-amber-900 space-y-2">
+                    <div className="font-extrabold text-sm flex items-center gap-2">
+                      <AlertTriangle className="w-5 h-5 text-amber-600" />
+                      Free Chat Locked by Master Admin (Peak Mode Active)
+                    </div>
+                    <p className="text-xs text-amber-800">
+                      The Master Admin has disabled free chat or turned on Peak Counselling Mode. Free users are instructed to call the Senior Mentor Hotline (+91 85446 37096) or upgrade to VIP Mentorship packages.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl text-emerald-950 text-xs flex items-center justify-between">
+                      <div className="flex items-center gap-2 font-bold">
+                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                        Free User Inquiries Enabled by Admin
+                      </div>
+                      <span className="text-[11px] text-emerald-800 font-medium">Respond to convert hot leads</span>
+                    </div>
+
+                    <div className="space-y-3">
+                      {freeInquiries.map((inq) => (
+                        <div key={inq.id} className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-3">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <span className="font-extrabold text-slate-900 text-xs">{inq.name}</span>
+                              <span className="text-[11px] text-slate-400 ml-2 font-mono">{inq.phone}</span>
+                            </div>
+                            <span className="text-[10px] text-slate-400">{inq.time}</span>
+                          </div>
+
+                          <div className="p-3 bg-slate-50 rounded-xl text-xs text-slate-800 border border-slate-200 font-medium">
+                            "{inq.question}"
+                          </div>
+
+                          {inq.replies.length > 0 && (
+                            <div className="space-y-1.5 pl-3 border-l-2 border-emerald-500 text-xs">
+                              {inq.replies.map((rep, rIdx) => (
+                                <div key={rIdx} className="text-slate-700 bg-emerald-50/50 p-2 rounded-lg">
+                                  <strong className="text-emerald-800">Your Mentor Answer:</strong> {rep}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          <div className="flex items-center gap-2 pt-2">
+                            <input
+                              type="text"
+                              placeholder="Type mentor reply to this student..."
+                              value={freeReplyInput[inq.id] || ''}
+                              onChange={(e) => setFreeReplyInput({ ...freeReplyInput, [inq.id]: e.target.value })}
+                              className="flex-1 px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500"
+                            />
+                            <button
+                              onClick={() => handleSendFreeReply(inq.id)}
+                              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1"
+                            >
+                              <Send className="w-3 h-3" /> Reply
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

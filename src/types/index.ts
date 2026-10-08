@@ -1,6 +1,6 @@
 export type UserRole = 'student' | 'mentor' | 'admin';
 export type CollegeType = 'govt' | 'private' | 'deemed' | 'central_univ' | 'aiims';
-export type CourseType = 'MBBS' | 'BDS' | 'BAMS' | 'BHMS' | 'BVSc' | 'B.Sc. Nursing';
+export type CourseType = 'MBBS' | 'BDS' | 'BAMS' | 'BHMS' | 'BUMS' | 'BSMS' | 'BVSc' | 'B.Sc. Nursing';
 export type QuotaType = 'AIQ_15' | 'STATE_85' | 'DEEMED_100' | 'MANAGEMENT' | 'NRI' | 'ESIC';
 export type LeadTier = 'cold' | 'warm' | 'hot' | 'vip_ready';
 export type ProbabilityBand = 'safe' | 'moderate' | 'risky';
@@ -49,6 +49,7 @@ export interface Cutoff {
   closing_rank: number;
   closing_score?: number;
   college?: College;
+  created_at?: string;
 }
 
 export interface PredictionResult {

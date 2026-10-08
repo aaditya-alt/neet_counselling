@@ -3,20 +3,20 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Compass, Award, Building2, GitCompare, Sparkles, Menu, X, PhoneCall, GraduationCap, ShieldCheck, UserCheck } from 'lucide-react';
+import { Compass, Award, Building2, GitCompare, Sparkles, Menu, X, PhoneCall, GraduationCap, ShieldCheck, UserCheck, Crown } from 'lucide-react';
 
 export const Navbar: React.FC = () => {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const navLinks = [
+    { name: 'Student Dashboard', href: '/student-dashboard', icon: Crown, highlight: true, badge: 'VIP' },
     { name: 'College Predictor', href: '/college-predictor', icon: Compass, badge: '2026-27' },
     { name: 'Counselling Guide', href: '/counselling', icon: GraduationCap, badge: '36+ States' },
     { name: 'Rank Predictor', href: '/rank-predictor', icon: Award },
     { name: 'Colleges & Cutoffs', href: '/colleges', icon: Building2 },
     { name: 'Compare', href: '/compare', icon: GitCompare },
-    { name: 'VIP Mentorship', href: '/pricing', icon: Sparkles, highlight: true },
-    { name: 'Senior Mentors', href: '/mentors', icon: UserCheck },
+    { name: 'VIP Mentorship', href: '/pricing', icon: Sparkles },
     { name: 'Mentor Portal', href: '/mentor-portal', icon: ShieldCheck },
     { name: 'Admin', href: '/admin', icon: ShieldCheck },
   ];

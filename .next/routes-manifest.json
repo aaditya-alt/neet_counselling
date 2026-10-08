@@ -85,6 +85,12 @@
       "regex": "^/rank\\-predictor(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/rank\\-predictor(?:/)?$"
+    },
+    {
+      "page": "/student-dashboard",
+      "regex": "^/student\\-dashboard(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/student\\-dashboard(?:/)?$"
     }
   ],
   "dataRoutes": [],

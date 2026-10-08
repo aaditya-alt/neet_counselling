@@ -1,13 +1,14 @@
 {
   "/_not-found/page": "app/_not-found/page.js",
-  "/admin/page": "app/admin/page.js",
-  "/colleges/page": "app/colleges/page.js",
-  "/compare/page": "app/compare/page.js",
-  "/college-predictor/page": "app/college-predictor/page.js",
   "/counselling/page": "app/counselling/page.js",
-  "/mentors/page": "app/mentors/page.js",
-  "/page": "app/page.js",
-  "/rank-predictor/page": "app/rank-predictor/page.js",
+  "/admin/page": "app/admin/page.js",
+  "/college-predictor/page": "app/college-predictor/page.js",
+  "/compare/page": "app/compare/page.js",
   "/mentor-portal/page": "app/mentor-portal/page.js",
-  "/pricing/page": "app/pricing/page.js"
+  "/colleges/page": "app/colleges/page.js",
+  "/page": "app/page.js",
+  "/student-dashboard/page": "app/student-dashboard/page.js",
+  "/rank-predictor/page": "app/rank-predictor/page.js",
+  "/pricing/page": "app/pricing/page.js",
+  "/mentors/page": "app/mentors/page.js"
 }
