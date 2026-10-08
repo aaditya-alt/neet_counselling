@@ -24,12 +24,20 @@ import {
   Mail,
   KeyRound,
   UserPlus,
-  LogIn
+  LogIn,
+  Copy,
+  Check,
+  Printer,
+  Lock,
+  Zap,
+  ArrowRight
 } from 'lucide-react';
 import { 
   getStudentDeliverableForUser,
   getStudentDeliverables,
   saveStudentDeliverable,
+  upgradeStudentToVip,
+  getPricingPlans,
   getLiveChatMessages, 
   sendLiveChatMessage, 
   StudentDeliverable, 
@@ -41,6 +49,7 @@ import {
   logoutActiveUser,
   UserProfile
 } from '../../lib/supabase';
+import { PricingPlan } from '../../types';
 import { logTelemetry } from '../../lib/telemetry';
 
 export default function StudentDashboardPage() {
@@ -48,6 +57,9 @@ export default function StudentDashboardPage() {
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
   const [authError, setAuthError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [copiedOrder, setCopiedOrder] = useState(false);
+  const [pricingPlans, setPricingPlans] = useState<PricingPlan[]>([]);
+  const [isUpgrading, setIsUpgrading] = useState(false);
 
   // Auth Form Fields
   const [loginEmailOrPhone, setLoginEmailOrPhone] = useState('');
@@ -71,13 +83,21 @@ export default function StudentDashboardPage() {
 
   // Check saved session on mount
   useEffect(() => {
-    const user = getActiveUserProfile();
-    if (user && user.role === 'student') {
-      setActiveUser(user);
-      loadStudentData(user.id);
-    } else {
-      setLoading(false);
+    async function init() {
+      const [plans, user] = await Promise.all([
+        getPricingPlans().catch(() => []),
+        Promise.resolve(getActiveUserProfile()),
+      ]);
+      setPricingPlans(plans);
+
+      if (user && user.role === 'student') {
+        setActiveUser(user);
+        await loadStudentData(user.id);
+      } else {
+        setLoading(false);
+      }
     }
+    init();
   }, []);
 
   const loadStudentData = async (studentId: string) => {
@@ -91,7 +111,6 @@ export default function StudentDashboardPage() {
       if (del) {
         setDeliverable(del);
       } else {
-        // Create initial placeholder deliverable if none exists
         const user = getActiveUserProfile();
         const placeholder: StudentDeliverable = {
           id: `del_${studentId}`,
@@ -101,10 +120,10 @@ export default function StudentDashboardPage() {
           score: user?.neet_score || 600,
           rank: user?.air_rank || 12000,
           state: user?.domicile_state || 'All India',
-          assignedMentorId: 'a0000000-0000-0000-0000-000000000001',
-          assignedMentorName: 'Aaditya Ranjan (Senior AIQ Lead)',
-          isPremium: true,
-          meetingLink: 'https://meet.google.com/neet-vip-live',
+          assignedMentorId: '',
+          assignedMentorName: '',
+          isPremium: false,
+          meetingLink: '',
           choicePdfUrl: '',
           choiceList: [],
           status: {
@@ -172,6 +191,20 @@ export default function StudentDashboardPage() {
     setIsSubmitting(false);
   };
 
+  const handleUpgradeVip = async () => {
+    if (!activeUser) return;
+    setIsUpgrading(true);
+    await upgradeStudentToVip(activeUser.id);
+    
+    // Update state
+    setActiveUser({ ...activeUser, is_premium: true });
+    if (deliverable) {
+      setDeliverable({ ...deliverable, isPremium: true });
+    }
+    setIsUpgrading(false);
+    alert('VIP Mentorship Plan Enrolled! Master Admin is reviewing your score to assign your dedicated Senior Mentor.');
+  };
+
   const handleLogout = () => {
     logoutActiveUser();
     setActiveUser(null);
@@ -181,7 +214,7 @@ export default function StudentDashboardPage() {
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputMsg.trim() || !activeUser) return;
+    if (!inputMsg.trim() || !activeUser || !deliverable?.assignedMentorId) return;
 
     const studentId = activeUser.id;
     const text = inputMsg.trim();
@@ -199,14 +232,32 @@ export default function StudentDashboardPage() {
     setChatMessages((prev) => [...prev, tempMsg]);
 
     try {
-      await sendLiveChatMessage(studentId, 'student', text);
+      await sendLiveChatMessage(studentId, deliverable.assignedMentorId, 'student', text);
     } catch (err) {
       console.error('Failed to send live message:', err);
     }
   };
 
+  const handleCopyChoiceList = () => {
+    if (!deliverable?.choiceList || deliverable.choiceList.length === 0) return;
+
+    const header = `NEET UG 2026–27 CHOICE FILLING PREFERENCE ORDER\nCandidate: ${activeUser?.full_name || 'Candidate'} | Score: ${activeUser?.neet_score || deliverable.score}/720 | AIR: #${activeUser?.air_rank || deliverable.rank}\nSenior Mentor: ${deliverable.assignedMentorName}\n----------------------------------------\n`;
+    const rows = deliverable.choiceList.map((item, idx) => 
+      `${idx + 1}. ${item.collegeName} [${item.course} - ${item.quota}] - Annual Tuition: Rs ${item.annualFee ? item.annualFee.toLocaleString() : 'N/A'}/yr (${item.state})${item.mentorTip ? `\n   Mentor Note: ${item.mentorTip}` : ''}`
+    ).join('\n\n');
+
+    const fullText = header + rows;
+    navigator.clipboard.writeText(fullText);
+    setCopiedOrder(true);
+    setTimeout(() => setCopiedOrder(false), 2500);
+  };
+
+  const handlePrintOrDownload = () => {
+    window.print();
+  };
+
   // -------------------------------------------------------------
-  // If user is not signed in -> Render Database Sign In / Register
+  // STATE 1: If user is not signed in -> Render Database Sign In / Register
   // -------------------------------------------------------------
   if (!activeUser) {
     return (
@@ -217,10 +268,10 @@ export default function StudentDashboardPage() {
               <Crown className="w-8 h-8" />
             </div>
             <h1 className="text-2xl sm:text-3xl font-black tracking-tight">
-              NEET UG 2026–27 Student Portal
+              NEET UG 2026–27 Candidate Portal
             </h1>
             <p className="text-xs sm:text-sm text-slate-300 mt-2 max-w-xl mx-auto">
-              Access your personalized Choice Filling sequence, 1-on-1 Senior Mentor Live Chat, and Google Meet strategy calls.
+              Sign in or create your candidate account to manage your NEET UG counselling preferences.
             </p>
 
             <div className="flex items-center justify-center gap-3 mt-6">
@@ -392,7 +443,7 @@ export default function StudentDashboardPage() {
                   disabled={isSubmitting}
                   className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs shadow-lg transition flex items-center justify-center gap-2 mt-4"
                 >
-                  <UserPlus className="w-4 h-4" /> {isSubmitting ? 'Creating Profile...' : 'Register & Enter Student Dashboard'}
+                  <UserPlus className="w-4 h-4" /> {isSubmitting ? 'Creating Profile...' : 'Register Candidate Account'}
                 </button>
               </form>
             )}
@@ -406,8 +457,192 @@ export default function StudentDashboardPage() {
     );
   }
 
+  const isVip = Boolean(deliverable?.isPremium || activeUser.is_premium);
+  const hasAssignedMentor = Boolean(deliverable?.assignedMentorId && deliverable?.assignedMentorName);
+
   // -------------------------------------------------------------
-  // Logged-in Student VIP Dashboard View (Live Database Synced)
+  // STATE 2: Authenticated Student who has NOT purchased VIP
+  // -------------------------------------------------------------
+  if (!isVip) {
+    return (
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+        {/* Profile Card Header */}
+        <div className="bg-gradient-to-r from-navy-950 via-slate-900 to-navy-900 rounded-3xl p-6 sm:p-8 text-white shadow-xl border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="space-y-2">
+            <span className="px-3 py-1 bg-slate-800 text-slate-300 rounded-full text-xs font-bold uppercase tracking-wider">
+              Free Candidate Account
+            </span>
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
+              Welcome, {activeUser.full_name}
+            </h1>
+            <p className="text-xs text-slate-300">
+              NEET Score: <strong>{activeUser.neet_score || 600}/720</strong> • AIR: <strong>#{activeUser.air_rank ? activeUser.air_rank.toLocaleString() : 'N/A'}</strong> • Domicile: <strong>{activeUser.domicile_state}</strong>
+            </p>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <a
+              href="tel:+918544637096"
+              className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow transition flex items-center gap-1.5"
+            >
+              <PhoneCall className="w-3.5 h-3.5" /> Hotline: +91 85446 37096
+            </a>
+            <button
+              onClick={handleLogout}
+              className="px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 text-rose-300 hover:text-rose-200 text-xs font-bold rounded-xl transition flex items-center gap-1.5"
+            >
+              <LogOut className="w-3.5 h-3.5" /> Logout
+            </button>
+          </div>
+        </div>
+
+        {/* Locked VIP Upgrade Banner */}
+        <div className="bg-gradient-to-br from-amber-500/10 via-amber-500/5 to-white rounded-3xl p-8 border-2 border-amber-300/80 shadow-lg space-y-6">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+            <div className="space-y-2 max-w-2xl">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-100 text-amber-900 text-xs font-extrabold uppercase border border-amber-300">
+                <Lock className="w-3.5 h-3.5 text-amber-700" /> VIP Counselling Access Locked
+              </div>
+              <h2 className="text-2xl sm:text-3xl font-black text-slate-900">
+                Unlock 1-on-1 Senior Mentor Guidance & Choice Filling
+              </h2>
+              <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+                Your free account is registered. To unlock your custom deterministic Round 1 Choice Filling Order, 1-on-1 Google Meet strategy calls with Senior Mentor Aaditya Ranjan, and 24/7 dedicated priority desk, upgrade to VIP Mentorship below.
+              </p>
+            </div>
+
+            <button
+              onClick={handleUpgradeVip}
+              disabled={isUpgrading}
+              className="px-6 py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-black text-xs sm:text-sm rounded-2xl shadow-xl transition-all transform hover:scale-105 flex items-center justify-center gap-2 self-start md:self-auto flex-shrink-0"
+            >
+              <Crown className="w-4 h-4 text-slate-950" />
+              {isUpgrading ? 'Activating VIP...' : 'Upgrade to VIP Mentorship Now'}
+            </button>
+          </div>
+
+          {/* Pricing Options Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-4">
+            {pricingPlans.map((plan) => (
+              <div
+                key={plan.id}
+                className={`rounded-2xl p-6 border transition flex flex-col justify-between ${
+                  plan.is_popular
+                    ? 'bg-white border-2 border-amber-500 shadow-xl relative ring-2 ring-amber-400/30'
+                    : 'bg-white border-slate-200 shadow-sm hover:border-slate-300'
+                }`}
+              >
+                {plan.badge && (
+                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-amber-500 text-slate-950 text-[10px] font-black px-3 py-0.5 rounded-full uppercase tracking-wider shadow">
+                    {plan.badge}
+                  </span>
+                )}
+
+                <div>
+                  <h3 className="font-extrabold text-slate-900 text-base">{plan.title}</h3>
+                  <div className="mt-3 flex items-baseline gap-2">
+                    <span className="text-2xl font-black text-navy-950">₹{plan.offer_price.toLocaleString()}</span>
+                    {plan.base_price > plan.offer_price && (
+                      <span className="text-xs text-slate-400 line-through">₹{plan.base_price.toLocaleString()}</span>
+                    )}
+                  </div>
+
+                  <ul className="mt-4 space-y-2 text-xs text-slate-600 border-t border-slate-100 pt-4">
+                    {plan.features.slice(0, 5).map((f, i) => (
+                      <li key={i} className="flex items-start gap-2">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0 mt-0.5" />
+                        <span>{f}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                <button
+                  onClick={handleUpgradeVip}
+                  disabled={isUpgrading}
+                  className={`w-full py-2.5 mt-6 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow ${
+                    plan.is_popular
+                      ? 'bg-amber-500 hover:bg-amber-600 text-slate-950 font-black'
+                      : 'bg-navy-950 hover:bg-slate-900 text-white'
+                  }`}
+                >
+                  <span>Select & Enroll VIP</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // -------------------------------------------------------------
+  // STATE 3: Authenticated VIP Student, Waiting for Admin to Assign Mentor
+  // -------------------------------------------------------------
+  if (isVip && !hasAssignedMentor) {
+    return (
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
+        {/* Profile Card Header */}
+        <div className="bg-gradient-to-r from-navy-950 via-slate-900 to-navy-900 rounded-3xl p-6 sm:p-8 text-white shadow-xl border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="space-y-2">
+            <span className="px-3 py-1 bg-amber-500/20 text-amber-300 border border-amber-400/40 rounded-full text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 w-max">
+              <Crown className="w-3.5 h-3.5 text-amber-400" /> VIP Mentorship Active
+            </span>
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
+              Welcome, {activeUser.full_name}
+            </h1>
+            <p className="text-xs text-slate-300">
+              Score: <strong>{activeUser.neet_score || 600}/720</strong> • AIR: <strong>#{activeUser.air_rank ? activeUser.air_rank.toLocaleString() : 'N/A'}</strong> ({activeUser.domicile_state})
+            </p>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <a
+              href="tel:+918544637096"
+              className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow transition flex items-center gap-1.5"
+            >
+              <PhoneCall className="w-3.5 h-3.5" /> Helpline: +91 85446 37096
+            </a>
+            <button
+              onClick={handleLogout}
+              className="px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 text-rose-300 hover:text-rose-200 text-xs font-bold rounded-xl transition flex items-center gap-1.5"
+            >
+              <LogOut className="w-3.5 h-3.5" /> Logout
+            </button>
+          </div>
+        </div>
+
+        {/* Mentor Allocation in Progress Card */}
+        <div className="bg-white rounded-3xl p-8 sm:p-10 border border-slate-200 shadow-xl text-center space-y-5">
+          <div className="w-16 h-16 rounded-3xl bg-amber-100 text-amber-700 flex items-center justify-center mx-auto animate-pulse">
+            <Clock className="w-8 h-8" />
+          </div>
+
+          <div className="space-y-2 max-w-lg mx-auto">
+            <h2 className="text-xl sm:text-2xl font-black text-slate-900">
+              Senior Mentor Allocation in Progress
+            </h2>
+            <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+              Your VIP plan is active! The Master Administrator is reviewing your AIR <strong>#{activeUser.air_rank?.toLocaleString()}</strong> ({activeUser.domicile_state}) and assigning your dedicated Senior Counselling Mentor within 15–30 minutes.
+            </p>
+          </div>
+
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl max-w-md mx-auto text-xs text-slate-700 space-y-1">
+            <div><strong>Assigned Support Desk:</strong> Senior Mentor Aaditya Ranjan & Team</div>
+            <div><strong>Urgent Mentor Direct Line:</strong> <a href="tel:+918544637096" className="text-emerald-700 font-bold hover:underline">+91 85446 37096</a></div>
+          </div>
+
+          <p className="text-[11px] text-slate-400">
+            Once assigned, your 1-on-1 Live Chat, Choice Filling Preference Ladder, and Google Meet Consultation will unlock immediately on this page.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // -------------------------------------------------------------
+  // STATE 4: Full VIP Dashboard (VIP Purchased + Mentor Assigned by Admin)
   // -------------------------------------------------------------
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
@@ -477,7 +712,7 @@ export default function StudentDashboardPage() {
           <div className="bg-white/5 backdrop-blur p-3 rounded-xl border border-white/10">
             <span className="text-slate-400 block text-[11px]">Assigned Senior Mentor</span>
             <span className="font-extrabold text-base text-amber-300 truncate block">
-              {deliverable?.assignedMentorName || 'Aaditya Ranjan (AIQ Lead)'}
+              {deliverable?.assignedMentorName}
             </span>
           </div>
         </div>
@@ -514,7 +749,7 @@ export default function StudentDashboardPage() {
             <div>
               <div className="font-bold text-xs">1-on-1 Video Strategy Call</div>
               <div className="text-[11px] text-slate-500 mt-0.5">
-                {deliverable?.status?.video_call_done ? 'Completed with Aaditya Ranjan' : 'Scheduled on Google Meet'}
+                {deliverable?.status?.video_call_done ? `Completed with ${deliverable.assignedMentorName}` : 'Scheduled on Google Meet'}
               </div>
             </div>
           </div>
@@ -580,19 +815,33 @@ export default function StudentDashboardPage() {
                 Senior Mentor Choice Filling Order (2026–27)
               </h3>
               <p className="text-xs text-slate-500 mt-1">
-                Custom-built by Senior Mentor Aaditya Ranjan strictly aligned to your rank, budget, and bond preference.
+                Custom-built by Senior Mentor {deliverable?.assignedMentorName} strictly aligned to your rank, budget, and bond preference.
               </p>
             </div>
 
-            {deliverable?.choicePdfUrl && (
-              <a
-                href={deliverable.choicePdfUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow transition flex items-center gap-1.5 self-start sm:self-auto"
-              >
-                <Download className="w-4 h-4" /> Download Official PDF
-              </a>
+            {deliverable?.choiceList && deliverable.choiceList.length > 0 && (
+              <div className="flex items-center gap-2 self-start sm:self-auto">
+                <button
+                  onClick={handleCopyChoiceList}
+                  className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow transition flex items-center gap-1.5"
+                >
+                  {copiedOrder ? (
+                    <>
+                      <Check className="w-4 h-4 text-emerald-400" /> Copied to Clipboard!
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-4 h-4 text-slate-300" /> Copy Choice Order
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={handlePrintOrDownload}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow transition flex items-center gap-1.5"
+                >
+                  <Printer className="w-4 h-4" /> Print / Save PDF
+                </button>
+              </div>
             )}
           </div>
 
@@ -602,7 +851,7 @@ export default function StudentDashboardPage() {
                 <Building2 className="w-10 h-10 text-slate-400 mx-auto" />
                 <h4 className="font-bold text-slate-900 text-sm">Choice Filling List In Progress</h4>
                 <p className="text-xs text-slate-500 max-w-md mx-auto">
-                  Senior Mentor Aaditya Ranjan is currently optimizing your preference list. It will appear here live once published from the Mentor Portal.
+                  Senior Mentor {deliverable?.assignedMentorName} is currently optimizing your preference list. It will appear here live once published.
                 </p>
               </div>
             ) : (
@@ -655,7 +904,7 @@ export default function StudentDashboardPage() {
               </div>
               <div>
                 <h4 className="font-extrabold text-slate-900 text-xs">
-                  {deliverable?.assignedMentorName || 'Aaditya Ranjan (Senior AIQ Lead)'}
+                  {deliverable?.assignedMentorName}
                 </h4>
                 <p className="text-[11px] text-emerald-600 font-semibold flex items-center gap-1">
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
@@ -673,7 +922,7 @@ export default function StudentDashboardPage() {
             {chatMessages.length === 0 ? (
               <div className="text-center py-12 text-slate-400 text-xs space-y-1">
                 <MessageSquare className="w-8 h-8 mx-auto text-slate-300" />
-                <p>No chat messages yet. Start your conversation with your Senior Mentor below.</p>
+                <p>No chat messages yet. Start your conversation with Senior Mentor {deliverable?.assignedMentorName} below.</p>
               </div>
             ) : (
               chatMessages.map((msg) => {
@@ -691,7 +940,7 @@ export default function StudentDashboardPage() {
                       }`}
                     >
                       <div className="font-bold text-[10px] mb-1 opacity-75">
-                        {isMe ? 'You' : 'Senior Mentor Aaditya'}
+                        {isMe ? 'You' : deliverable?.assignedMentorName}
                       </div>
                       {msg.message || msg.text}
                     </div>
@@ -734,7 +983,7 @@ export default function StudentDashboardPage() {
               Personalized 1-on-1 Google Meet Video Consultation
             </h3>
             <p className="text-xs text-slate-600 leading-relaxed">
-              Meet directly with Senior Mentor Aaditya Ranjan. We screen-share official MCC and state portals, audit private college fee structures, and lock your top choice combinations together.
+              Meet directly with Senior Mentor {deliverable?.assignedMentorName}. We screen-share official MCC and state portals, audit private college fee structures, and lock your top choice combinations together.
             </p>
           </div>
 

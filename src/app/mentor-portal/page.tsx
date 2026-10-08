@@ -29,7 +29,9 @@ import {
   Building2,
   ExternalLink,
   Download,
-  RefreshCw
+  RefreshCw,
+  Copy,
+  Printer
 } from 'lucide-react';
 import { 
   getColleges, 
@@ -58,6 +60,7 @@ export default function MentorPortalPage() {
   const [mentorPassword, setMentorPassword] = useState<string>('');
   const [authError, setAuthError] = useState<string>('');
   const [isLoggingIn, setIsLoggingIn] = useState<boolean>(false);
+  const [copiedLadder, setCopiedLadder] = useState<boolean>(false);
 
   const [colleges, setColleges] = useState<College[]>([]);
   const [deliverables, setDeliverables] = useState<StudentDeliverable[]>([]);
@@ -83,9 +86,8 @@ export default function MentorPortalPage() {
   const [freeInquiries, setFreeInquiries] = useState<FreeInquiry[]>([]);
   const [freeReplyInput, setFreeReplyInput] = useState<{ [key: string]: string }>({});
 
-  // Video Meeting & PDF
+  // Video Meeting
   const [meetLinkInput, setMeetLinkInput] = useState('');
-  const [pdfLinkInput, setPdfLinkInput] = useState('');
 
   useEffect(() => {
     const user = getActiveUserProfile();
@@ -117,7 +119,6 @@ export default function MentorPortalPage() {
         setSelectedStudent(first);
         setWorkingChoices(first.choiceList || []);
         setMeetLinkInput(first.meetingLink || '');
-        setPdfLinkInput(first.choicePdfUrl || '');
         const msgs = await getLiveChatMessages(first.studentId).catch(() => []);
         setChatMessages(Array.isArray(msgs) ? msgs : []);
       }
@@ -158,7 +159,6 @@ export default function MentorPortalPage() {
     setSelectedStudent(student);
     setWorkingChoices(student.choiceList || []);
     setMeetLinkInput(student.meetingLink || '');
-    setPdfLinkInput(student.choicePdfUrl || '');
     const msgs = await getLiveChatMessages(student.studentId);
     setChatMessages(msgs);
   };
@@ -201,6 +201,15 @@ export default function MentorPortalPage() {
     setWorkingChoices(updated);
   };
 
+  const handleCopyLadder = () => {
+    if (!selectedStudent || workingChoices.length === 0) return;
+    const header = `NEET UG 2026–27 CHOICE FILLING SEQUENCE\nCandidate: ${selectedStudent.studentName} | Score: ${selectedStudent.score}/720 | AIR: #${selectedStudent.rank}\nMentor: Aaditya Ranjan (Senior AIQ Lead)\n----------------------------------------\n`;
+    const body = workingChoices.map((c, i) => `${i + 1}. ${c.collegeName} [${c.course} - ${c.quota}] - Annual Fee: Rs ${c.annualFee.toLocaleString()}/yr (${c.state})${c.mentorTip ? `\n   Note: ${c.mentorTip}` : ''}`).join('\n\n');
+    navigator.clipboard.writeText(header + body);
+    setCopiedLadder(true);
+    setTimeout(() => setCopiedLadder(false), 2500);
+  };
+
   // Publish Choice Filling List to Supabase
   const handlePublishChoiceList = async () => {
     if (!selectedStudent) return;
@@ -209,7 +218,6 @@ export default function MentorPortalPage() {
     const updatedDeliverable: StudentDeliverable = {
       ...selectedStudent,
       choiceList: workingChoices,
-      choicePdfUrl: pdfLinkInput || `https://collegemitra.com/docs/choices_${selectedStudent.studentId}_r1.pdf`,
       meetingLink: meetLinkInput || selectedStudent.meetingLink,
       status: {
         ...selectedStudent.status,
@@ -558,17 +566,28 @@ export default function MentorPortalPage() {
 
                 {/* Live Sequence Ladder View */}
                 <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
-                  <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
                     <h3 className="font-black text-slate-900 text-base">
                       Customized Choice Filling Ladder ({workingChoices.length} Colleges)
                     </h3>
-                    <button
-                      disabled={isPublishing || workingChoices.length === 0}
-                      onClick={handlePublishChoiceList}
-                      className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow transition flex items-center gap-1.5"
-                    >
-                      <Check className="w-4 h-4" /> Publish & Sync to Student Dashboard
-                    </button>
+                    <div className="flex items-center gap-2">
+                      {workingChoices.length > 0 && (
+                        <button
+                          onClick={handleCopyLadder}
+                          className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow transition flex items-center gap-1.5"
+                        >
+                          {copiedLadder ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                          {copiedLadder ? 'Copied!' : 'Copy Order'}
+                        </button>
+                      )}
+                      <button
+                        disabled={isPublishing || workingChoices.length === 0}
+                        onClick={handlePublishChoiceList}
+                        className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow transition flex items-center gap-1.5"
+                      >
+                        <Check className="w-4 h-4" /> Publish & Sync to Student Dashboard
+                      </button>
+                    </div>
                   </div>
 
                   {workingChoices.length === 0 ? (

@@ -1,24 +1,30 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Compass, Award, Building2, GitCompare, Sparkles, Menu, X, PhoneCall, GraduationCap, ShieldCheck, UserCheck, Crown } from 'lucide-react';
+import { Compass, Award, Building2, GitCompare, Sparkles, Menu, X, PhoneCall, GraduationCap, User } from 'lucide-react';
+import { getActiveUserProfile, UserProfile } from '../lib/supabase';
 
 export const Navbar: React.FC = () => {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+
+  useEffect(() => {
+    const user = getActiveUserProfile();
+    if (user) {
+      setCurrentUser(user);
+    }
+  }, [pathname]);
 
   const navLinks = [
-    { name: 'Student Dashboard', href: '/student-dashboard', icon: Crown, highlight: true, badge: 'VIP' },
     { name: 'College Predictor', href: '/college-predictor', icon: Compass, badge: '2026-27' },
     { name: 'Counselling Guide', href: '/counselling', icon: GraduationCap, badge: '36+ States' },
     { name: 'Rank Predictor', href: '/rank-predictor', icon: Award },
     { name: 'Colleges & Cutoffs', href: '/colleges', icon: Building2 },
     { name: 'Compare', href: '/compare', icon: GitCompare },
     { name: 'VIP Mentorship', href: '/pricing', icon: Sparkles },
-    { name: 'Mentor Portal', href: '/mentor-portal', icon: ShieldCheck },
-    { name: 'Admin', href: '/admin', icon: ShieldCheck },
   ];
 
   return (
@@ -50,7 +56,7 @@ export const Navbar: React.FC = () => {
           </Link>
 
           {/* Desktop Navigation */}
-          <nav className="hidden xl:flex items-center gap-1">
+          <nav className="hidden lg:flex items-center gap-1">
             {navLinks.map((link) => {
               const Icon = link.icon;
               const isActive = pathname === link.href;
@@ -58,15 +64,13 @@ export const Navbar: React.FC = () => {
                 <Link
                   key={link.href}
                   href={link.href}
-                  className={`flex items-center gap-1 px-2.5 py-2 rounded-lg text-xs font-semibold transition-all ${
+                  className={`flex items-center gap-1 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
                     isActive
                       ? 'bg-emerald-50 text-emerald-700'
-                      : link.highlight
-                      ? 'bg-amber-50 text-amber-900 hover:bg-amber-100 border border-amber-200/60'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
                   }`}
                 >
-                  <Icon className={`w-3.5 h-3.5 ${link.highlight ? 'text-amber-600' : isActive ? 'text-emerald-600' : 'text-slate-400'}`} />
+                  <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-emerald-600' : 'text-slate-400'}`} />
                   {link.name}
                   {link.badge && (
                     <span className="text-[9px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.2 rounded-full ml-0.5">
@@ -87,18 +91,27 @@ export const Navbar: React.FC = () => {
               <PhoneCall className="w-3.5 h-3.5 text-emerald-600" />
               +91 85446 37096
             </a>
-            <Link
-              href="/pricing"
-              className="bg-navy-950 hover:bg-navy-900 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow transition-all flex items-center gap-1.5"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-amber-400" /> VIP Mentorship
-            </Link>
+            {currentUser ? (
+              <Link
+                href="/student-dashboard"
+                className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl shadow transition-all flex items-center gap-1.5"
+              >
+                <User className="w-3.5 h-3.5" /> Dashboard
+              </Link>
+            ) : (
+              <Link
+                href="/pricing"
+                className="bg-navy-950 hover:bg-navy-900 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow transition-all flex items-center gap-1.5"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-400" /> VIP Mentorship
+              </Link>
+            )}
           </div>
 
           {/* Mobile Menu Toggle */}
           <button
             onClick={() => setMobileOpen(!mobileOpen)}
-            className="xl:hidden p-2 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+            className="lg:hidden p-2 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100"
           >
             {mobileOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
           </button>
@@ -107,7 +120,7 @@ export const Navbar: React.FC = () => {
 
       {/* Mobile Drawer */}
       {mobileOpen && (
-        <div className="xl:hidden border-t border-slate-200 bg-white px-4 pt-3 pb-6 space-y-2 shadow-xl">
+        <div className="lg:hidden border-t border-slate-200 bg-white px-4 pt-3 pb-6 space-y-2 shadow-xl">
           {navLinks.map((link) => {
             const Icon = link.icon;
             const isActive = pathname === link.href;

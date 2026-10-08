@@ -249,7 +249,7 @@ export default function AdminPanelPage() {
   };
 
   // 3. Dynamic Lead Assignment
-  const handleAssignMentor = (leadId: string, mentorId: string) => {
+  const handleAssignMentor = async (leadId: string, mentorId: string) => {
     const mentor = mentors.find(m => m.id === mentorId);
     if (!mentor) return;
     setLeads(prev => prev.map(l => l.id === leadId ? {
@@ -257,6 +257,20 @@ export default function AdminPanelPage() {
       assigned_mentor_id: mentor.id,
       assigned_mentor_name: mentor.full_name,
     } : l));
+
+    // Save to deliverable in Supabase so student dashboard unlocks immediately!
+    const del = deliverables.find(d => d.studentId === leadId || d.id === leadId);
+    if (del) {
+      const updated: StudentDeliverable = {
+        ...del,
+        assignedMentorId: mentor.id,
+        assignedMentorName: mentor.full_name,
+        isPremium: true,
+        updatedAt: new Date().toISOString()
+      };
+      await saveStudentDeliverable(updated);
+      setDeliverables(prev => prev.map(d => d.id === updated.id ? updated : d));
+    }
   };
 
   // 4. Dynamic Deliverables Update

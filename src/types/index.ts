@@ -79,6 +79,8 @@ export interface PricingPlan {
   discount_pct: number;
   features: string[];
   is_active: boolean;
+  badge?: string;
+  is_popular?: boolean;
 }
 
 export interface SystemConfigs {

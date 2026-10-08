@@ -673,7 +673,7 @@ export async function registerStudentAccount(data: {
       });
     } catch {}
 
-    // Initialize initial student deliverable queue item in Supabase
+    // Initialize initial student deliverable queue item in Supabase (Unassigned, Not VIP yet)
     const initialDeliverable: StudentDeliverable = {
       id: `del_${userId}`,
       studentId: userId,
@@ -682,10 +682,10 @@ export async function registerStudentAccount(data: {
       score: data.neetScore,
       rank: data.airRank,
       state: data.state,
-      assignedMentorId: 'a0000000-0000-0000-0000-000000000001',
-      assignedMentorName: 'Aaditya Ranjan (Senior AIQ Lead)',
+      assignedMentorId: '',
+      assignedMentorName: '',
       isPremium: false,
-      meetingLink: 'https://meet.google.com/neet-vip-live',
+      meetingLink: '',
       choicePdfUrl: '',
       choiceList: [],
       status: {
@@ -703,18 +703,53 @@ export async function registerStudentAccount(data: {
     setLocal('registered_students', [studentProfile, ...currentStudents.filter(s => s.id !== userId)]);
     setLocal('active_user_profile', studentProfile);
 
-    // Send welcome live message
-    await sendLiveChatMessage(
-      userId,
-      'a0000000-0000-0000-0000-000000000001',
-      'mentor',
-      `Welcome to College Mitra, ${data.fullName}! I am Aaditya Ranjan, your Senior Lead Mentor. I am reviewing your AIR #${data.airRank.toLocaleString()} (${data.state}) and formulating your Round 1 Choice Sequence.`
-    );
-
     return { success: true, profile: studentProfile };
   } catch (err: any) {
     return { success: false, error: err?.message || 'Failed to create student account' };
   }
+}
+
+export async function upgradeStudentToVip(studentId: string): Promise<boolean> {
+  const current = await getStudentDeliverables();
+  const found = current.find(d => d.studentId === studentId);
+  if (found) {
+    const updated: StudentDeliverable = {
+      ...found,
+      isPremium: true,
+      updatedAt: new Date().toISOString()
+    };
+    await saveStudentDeliverable(updated);
+  } else {
+    const user = getActiveUserProfile();
+    if (user && user.id === studentId) {
+      await saveStudentDeliverable({
+        id: `del_${studentId}`,
+        studentId: studentId,
+        studentName: user.full_name,
+        phoneNumber: user.phone_number || '+91 85446 37096',
+        score: user.neet_score || 600,
+        rank: user.air_rank || 12000,
+        state: user.domicile_state || 'Delhi',
+        assignedMentorId: '',
+        assignedMentorName: '',
+        isPremium: true,
+        meetingLink: '',
+        choicePdfUrl: '',
+        choiceList: [],
+        status: { choice_list_sent: false, video_call_done: false, seat_allotted: false },
+        round: 1,
+        updatedAt: new Date().toISOString()
+      });
+    }
+  }
+
+  // Update local active profile
+  const user = getActiveUserProfile();
+  if (user && user.id === studentId) {
+    const updatedUser = { ...user, is_premium: true };
+    setLocal('active_user_profile', updatedUser);
+  }
+  return true;
 }
 
 export function getActiveUserProfile(): UserProfile | null {
