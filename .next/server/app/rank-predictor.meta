@@ -1,0 +1,15 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/rank-predictor/layout,_N_T_/rank-predictor/page,_N_T_/rank-predictor"
+  },
+  "routeCache": {
+    "key": "/route-cache/APP_PAGE/aa59e34ef8658c6e4f5a3641883e03c5ed138f19ebdd34c603f2d590a5c2c52e/$/rank-predictor",
+    "owner": {
+      "kind": "APP_PAGE",
+      "sourceRoute": "/rank-predictor/page"
+    },
+    "isFallback": false
+  }
+}

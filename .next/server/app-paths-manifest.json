@@ -1,0 +1,8 @@
+{
+  "/rank-predictor/page": "app/rank-predictor/page.js",
+  "/colleges/page": "app/colleges/page.js",
+  "/compare/page": "app/compare/page.js",
+  "/pricing/page": "app/pricing/page.js",
+  "/page": "app/page.js",
+  "/college-predictor/page": "app/college-predictor/page.js"
+}
