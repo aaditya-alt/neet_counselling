@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { 
   Crown, 
@@ -30,7 +30,9 @@ import {
   Printer,
   Lock,
   Zap,
-  ArrowRight
+  ArrowRight,
+  RefreshCw,
+  Edit2
 } from 'lucide-react';
 import { 
   getStudentDeliverableForUser,
@@ -45,6 +47,8 @@ import {
   getFeatureFlags,
   getActiveUserProfile,
   verifyAndLoginUser,
+  sendEmailOtp,
+  verifyEmailOtp,
   registerStudentAccount,
   logoutActiveUser,
   UserProfile
@@ -54,7 +58,7 @@ import { logTelemetry } from '../../lib/telemetry';
 
 export default function StudentDashboardPage() {
   const [activeUser, setActiveUser] = useState<UserProfile | null>(null);
-  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  const [authMode, setAuthMode] = useState<'login' | 'register' | 'otp_verify'>('login');
   const [authError, setAuthError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [copiedOrder, setCopiedOrder] = useState(false);
@@ -68,11 +72,16 @@ export default function StudentDashboardPage() {
   const [regFullName, setRegFullName] = useState('');
   const [regEmail, setRegEmail] = useState('');
   const [regPhone, setRegPhone] = useState('');
-  const [regPassword, setRegPassword] = useState('');
   const [regScore, setRegScore] = useState<number>(620);
   const [regRank, setRegRank] = useState<number>(14500);
   const [regState, setRegState] = useState('Delhi');
   const [regCategory, setRegCategory] = useState('General (UR)');
+
+  // 6-Digit OTP State
+  const [otpDigits, setOtpDigits] = useState<string[]>(['', '', '', '', '', '']);
+  const [resendTimer, setResendTimer] = useState<number>(60);
+  const [canResend, setCanResend] = useState<boolean>(false);
+  const otpInputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   // Dashboard Data
   const [deliverable, setDeliverable] = useState<StudentDeliverable | null>(null);
@@ -99,6 +108,23 @@ export default function StudentDashboardPage() {
     }
     init();
   }, []);
+
+  // Timer countdown for OTP
+  useEffect(() => {
+    let interval: any = null;
+    if (authMode === 'otp_verify' && resendTimer > 0) {
+      interval = setInterval(() => {
+        setResendTimer((prev) => {
+          if (prev <= 1) {
+            setCanResend(true);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [authMode, resendTimer]);
 
   const loadStudentData = async (studentId: string) => {
     try {
@@ -160,21 +186,74 @@ export default function StudentDashboardPage() {
     setIsSubmitting(false);
   };
 
-  const handleRegister = async (e: React.FormEvent) => {
+  const handleInitiateRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
     setAuthError('');
 
-    if (!regFullName || !regEmail || !regPhone) {
-      setAuthError('Please fill in your name, email, and phone number.');
+    if (!regFullName.trim() || !regEmail.trim() || !regPhone.trim()) {
+      setAuthError('Please provide your Full Name, Email Address, and Mobile Number.');
       setIsSubmitting(false);
       return;
     }
 
-    const res = await registerStudentAccount({
+    // Send OTP to Email via Supabase
+    const otpRes = await sendEmailOtp(regEmail);
+    if (otpRes.success) {
+      setAuthMode('otp_verify');
+      setResendTimer(60);
+      setCanResend(false);
+      setOtpDigits(['', '', '', '', '', '']);
+      setTimeout(() => otpInputRefs.current[0]?.focus(), 150);
+    } else {
+      setAuthError(otpRes.error || 'Failed to dispatch verification email. Please try again.');
+    }
+    setIsSubmitting(false);
+  };
+
+  const handleOtpDigitChange = (index: number, value: string) => {
+    if (value.length > 1) {
+      // Handle paste of full 6-digit code
+      const pasted = value.replace(/\D/g, '').slice(0, 6);
+      const nextDigits = [...otpDigits];
+      for (let i = 0; i < 6; i++) {
+        nextDigits[i] = pasted[i] || '';
+      }
+      setOtpDigits(nextDigits);
+      const nextIdx = Math.min(pasted.length, 5);
+      otpInputRefs.current[nextIdx]?.focus();
+      return;
+    }
+
+    const nextDigits = [...otpDigits];
+    nextDigits[index] = value.replace(/\D/g, '');
+    setOtpDigits(nextDigits);
+
+    // Auto-advance
+    if (value && index < 5) {
+      otpInputRefs.current[index + 1]?.focus();
+    }
+  };
+
+  const handleOtpKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Backspace' && !otpDigits[index] && index > 0) {
+      otpInputRefs.current[index - 1]?.focus();
+    }
+  };
+
+  const handleVerifyOtpSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const token = otpDigits.join('');
+    if (token.length < 6) {
+      setAuthError('Please enter all 6 digits of the verification code.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setAuthError('');
+
+    const res = await verifyEmailOtp(regEmail, token, {
       fullName: regFullName,
-      email: regEmail,
-      password: regPassword || 'NeetStudent@2026',
       phone: regPhone,
       neetScore: Number(regScore) || 600,
       airRank: Number(regRank) || 12000,
@@ -186,9 +265,20 @@ export default function StudentDashboardPage() {
       setActiveUser(res.profile);
       await loadStudentData(res.profile.id);
     } else {
-      setAuthError(res.error || 'Failed to create student account. Please try again.');
+      setAuthError(res.error || 'Invalid OTP code. Please check your email inbox and try again.');
     }
     setIsSubmitting(false);
+  };
+
+  const handleResendOtp = async () => {
+    if (!canResend) return;
+    setIsSubmitting(true);
+    setAuthError('');
+    await sendEmailOtp(regEmail);
+    setResendTimer(60);
+    setCanResend(false);
+    setIsSubmitting(false);
+    alert(`A fresh 6-digit verification code was sent to ${regEmail}`);
   };
 
   const handleUpgradeVip = async () => {
@@ -257,12 +347,13 @@ export default function StudentDashboardPage() {
   };
 
   // -------------------------------------------------------------
-  // STATE 1: If user is not signed in -> Render Database Sign In / Register
+  // STATE 1: If user is not signed in -> Render Database Sign In / Register / OTP
   // -------------------------------------------------------------
   if (!activeUser) {
     return (
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl overflow-hidden">
+          {/* Header Banner */}
           <div className="bg-gradient-to-r from-navy-950 via-slate-900 to-navy-900 p-8 text-white text-center relative overflow-hidden">
             <div className="w-16 h-16 rounded-2xl bg-amber-500/20 border border-amber-400/40 text-amber-400 flex items-center justify-center mx-auto mb-4">
               <Crown className="w-8 h-8" />
@@ -271,31 +362,33 @@ export default function StudentDashboardPage() {
               NEET UG 2026–27 Candidate Portal
             </h1>
             <p className="text-xs sm:text-sm text-slate-300 mt-2 max-w-xl mx-auto">
-              Sign in or create your candidate account to manage your NEET UG counselling preferences.
+              Sign in or register with verified email OTP to manage your medical counselling preferences.
             </p>
 
-            <div className="flex items-center justify-center gap-3 mt-6">
-              <button
-                onClick={() => { setAuthMode('login'); setAuthError(''); }}
-                className={`px-5 py-2 rounded-xl text-xs font-bold transition ${
-                  authMode === 'login'
-                    ? 'bg-amber-500 text-slate-950 shadow-md'
-                    : 'bg-white/10 text-white hover:bg-white/20'
-                }`}
-              >
-                <LogIn className="w-3.5 h-3.5 inline mr-1.5" /> Sign In to Account
-              </button>
-              <button
-                onClick={() => { setAuthMode('register'); setAuthError(''); }}
-                className={`px-5 py-2 rounded-xl text-xs font-bold transition ${
-                  authMode === 'register'
-                    ? 'bg-amber-500 text-slate-950 shadow-md'
-                    : 'bg-white/10 text-white hover:bg-white/20'
-                }`}
-              >
-                <UserPlus className="w-3.5 h-3.5 inline mr-1.5" /> New Student Registration
-              </button>
-            </div>
+            {authMode !== 'otp_verify' && (
+              <div className="flex items-center justify-center gap-3 mt-6">
+                <button
+                  onClick={() => { setAuthMode('login'); setAuthError(''); }}
+                  className={`px-5 py-2 rounded-xl text-xs font-bold transition ${
+                    authMode === 'login'
+                      ? 'bg-amber-500 text-slate-950 shadow-md'
+                      : 'bg-white/10 text-white hover:bg-white/20'
+                  }`}
+                >
+                  <LogIn className="w-3.5 h-3.5 inline mr-1.5" /> Sign In with Password
+                </button>
+                <button
+                  onClick={() => { setAuthMode('register'); setAuthError(''); }}
+                  className={`px-5 py-2 rounded-xl text-xs font-bold transition ${
+                    authMode === 'register'
+                      ? 'bg-amber-500 text-slate-950 shadow-md'
+                      : 'bg-white/10 text-white hover:bg-white/20'
+                  }`}
+                >
+                  <UserPlus className="w-3.5 h-3.5 inline mr-1.5" /> Register with Email OTP
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="p-8">
@@ -306,11 +399,12 @@ export default function StudentDashboardPage() {
               </div>
             )}
 
-            {authMode === 'login' ? (
+            {/* SCREEN A: Sign In Form */}
+            {authMode === 'login' && (
               <form onSubmit={handleLogin} className="space-y-4 max-w-md mx-auto">
                 <div>
                   <label className="text-xs font-bold text-slate-700 block mb-1">
-                    Email ID or Phone Number
+                    Registered Email ID or Mobile Number
                   </label>
                   <input
                     type="text"
@@ -341,18 +435,31 @@ export default function StudentDashboardPage() {
                   disabled={isSubmitting}
                   className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs shadow-lg transition flex items-center justify-center gap-2"
                 >
-                  <LogIn className="w-4 h-4" /> {isSubmitting ? 'Verifying Account...' : 'Sign In to Student Dashboard'}
+                  <LogIn className="w-4 h-4" /> {isSubmitting ? 'Verifying Credentials...' : 'Sign In to Student Dashboard'}
                 </button>
+
+                <div className="text-center pt-2">
+                  <button
+                    type="button"
+                    onClick={() => { setAuthMode('register'); setAuthError(''); }}
+                    className="text-xs text-emerald-700 hover:underline font-semibold"
+                  >
+                    Don't have an account? Register with Email OTP →
+                  </button>
+                </div>
               </form>
-            ) : (
-              <form onSubmit={handleRegister} className="space-y-4 max-w-lg mx-auto">
+            )}
+
+            {/* SCREEN B: Candidate Registration Details Form */}
+            {authMode === 'register' && (
+              <form onSubmit={handleInitiateRegister} className="space-y-4 max-w-lg mx-auto">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="text-xs font-bold text-slate-700 block mb-1">Full Name</label>
+                    <label className="text-xs font-bold text-slate-700 block mb-1">Candidate Full Name</label>
                     <input
                       type="text"
                       required
-                      placeholder="Candidate's Full Name"
+                      placeholder="e.g. Ananya Sharma"
                       value={regFullName}
                       onChange={(e) => setRegFullName(e.target.value)}
                       className="w-full px-4 py-2.5 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500"
@@ -360,7 +467,7 @@ export default function StudentDashboardPage() {
                   </div>
 
                   <div>
-                    <label className="text-xs font-bold text-slate-700 block mb-1">Phone Number</label>
+                    <label className="text-xs font-bold text-slate-700 block mb-1">Mobile Number</label>
                     <input
                       type="tel"
                       required
@@ -372,35 +479,21 @@ export default function StudentDashboardPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-xs font-bold text-slate-700 block mb-1">Email Address</label>
-                    <input
-                      type="email"
-                      required
-                      placeholder="name@gmail.com"
-                      value={regEmail}
-                      onChange={(e) => setRegEmail(e.target.value)}
-                      className="w-full px-4 py-2.5 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-bold text-slate-700 block mb-1">Create Password</label>
-                    <input
-                      type="password"
-                      required
-                      placeholder="Min 6 characters"
-                      value={regPassword}
-                      onChange={(e) => setRegPassword(e.target.value)}
-                      className="w-full px-4 py-2.5 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500"
-                    />
-                  </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">Official Email Address (OTP will be sent here)</label>
+                  <input
+                    type="email"
+                    required
+                    placeholder="candidate@gmail.com"
+                    value={regEmail}
+                    onChange={(e) => setRegEmail(e.target.value)}
+                    className="w-full px-4 py-2.5 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500"
+                  />
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
-                    <label className="text-xs font-bold text-slate-700 block mb-1">NEET Score (Out of 720)</label>
+                    <label className="text-xs font-bold text-slate-700 block mb-1">NEET Score (out of 720)</label>
                     <input
                       type="number"
                       min={100}
@@ -443,13 +536,82 @@ export default function StudentDashboardPage() {
                   disabled={isSubmitting}
                   className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs shadow-lg transition flex items-center justify-center gap-2 mt-4"
                 >
-                  <UserPlus className="w-4 h-4" /> {isSubmitting ? 'Creating Profile...' : 'Register Candidate Account'}
+                  <Mail className="w-4 h-4" /> {isSubmitting ? 'Sending Verification Code...' : 'Send 6-Digit Email OTP & Continue'}
                 </button>
               </form>
             )}
 
+            {/* SCREEN C: 6-DIGIT EMAIL OTP VERIFICATION SCREEN */}
+            {authMode === 'otp_verify' && (
+              <div className="max-w-md mx-auto space-y-6 text-center">
+                <div className="w-16 h-16 rounded-3xl bg-emerald-50 border border-emerald-200 text-emerald-600 flex items-center justify-center mx-auto shadow-inner">
+                  <ShieldCheck className="w-8 h-8" />
+                </div>
+
+                <div className="space-y-1.5">
+                  <h2 className="text-xl font-black text-slate-900">
+                    Verify Your Email Address
+                  </h2>
+                  <p className="text-xs text-slate-600">
+                    We sent a 6-digit verification code to <span className="font-bold text-slate-900">{regEmail}</span>
+                  </p>
+                  <button
+                    onClick={() => { setAuthMode('register'); setAuthError(''); }}
+                    className="text-[11px] text-emerald-700 hover:underline inline-flex items-center gap-1 font-semibold"
+                  >
+                    <Edit2 className="w-3 h-3" /> Edit Email or Candidate Details
+                  </button>
+                </div>
+
+                <form onSubmit={handleVerifyOtpSubmit} className="space-y-6">
+                  {/* 6-Digit Boxes */}
+                  <div className="flex justify-center gap-2 sm:gap-3">
+                    {otpDigits.map((digit, idx) => (
+                      <input
+                        key={idx}
+                        ref={(el) => { otpInputRefs.current[idx] = el; }}
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        maxLength={6}
+                        value={digit}
+                        onChange={(e) => handleOtpDigitChange(idx, e.target.value)}
+                        onKeyDown={(e) => handleOtpKeyDown(idx, e)}
+                        className="w-12 h-14 text-center font-black text-xl text-slate-900 border-2 border-slate-300 rounded-2xl focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 focus:outline-none bg-slate-50 transition-all shadow-sm"
+                      />
+                    ))}
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={isSubmitting || otpDigits.join('').length < 6}
+                    className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs shadow-lg transition flex items-center justify-center gap-2"
+                  >
+                    <CheckCircle2 className="w-4 h-4" /> {isSubmitting ? 'Verifying OTP with Supabase...' : 'Verify OTP & Enter Candidate Dashboard'}
+                  </button>
+
+                  <div className="flex items-center justify-between text-xs text-slate-500 pt-2 border-t border-slate-100">
+                    <span>Didn't receive code?</span>
+                    {canResend ? (
+                      <button
+                        type="button"
+                        onClick={handleResendOtp}
+                        className="text-emerald-700 hover:underline font-bold flex items-center gap-1"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" /> Resend 6-Digit Code
+                      </button>
+                    ) : (
+                      <span className="text-slate-400 font-medium">
+                        Resend in <strong className="text-slate-700">{resendTimer}s</strong>
+                      </span>
+                    )}
+                  </div>
+                </form>
+              </div>
+            )}
+
             <div className="mt-8 pt-6 border-t border-slate-100 text-center text-xs text-slate-400">
-              Need immediate assistance? Call Senior Mentor Hotline: <a href="tel:+918544637096" className="text-emerald-700 font-bold hover:underline">+91 85446 37096</a>
+              Need instant assistance? Senior Mentor Hotline: <a href="tel:+918544637096" className="text-emerald-700 font-bold hover:underline">+91 85446 37096</a>
             </div>
           </div>
         </div>
@@ -470,7 +632,7 @@ export default function StudentDashboardPage() {
         <div className="bg-gradient-to-r from-navy-950 via-slate-900 to-navy-900 rounded-3xl p-6 sm:p-8 text-white shadow-xl border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="space-y-2">
             <span className="px-3 py-1 bg-slate-800 text-slate-300 rounded-full text-xs font-bold uppercase tracking-wider">
-              Free Candidate Account
+              Free Candidate Account (Verified)
             </span>
             <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
               Welcome, {activeUser.full_name}
@@ -507,7 +669,7 @@ export default function StudentDashboardPage() {
                 Unlock 1-on-1 Senior Mentor Guidance & Choice Filling
               </h2>
               <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
-                Your free account is registered. To unlock your custom deterministic Round 1 Choice Filling Order, 1-on-1 Google Meet strategy calls with Senior Mentor Aaditya Ranjan, and 24/7 dedicated priority desk, upgrade to VIP Mentorship below.
+                Your email is verified! To unlock your customized deterministic Round 1 Choice Filling Order, 1-on-1 Google Meet strategy calls with Senior Mentor Aaditya Ranjan, and 24/7 dedicated priority desk, upgrade to VIP Mentorship below.
               </p>
             </div>
 
