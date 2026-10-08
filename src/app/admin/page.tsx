@@ -47,6 +47,10 @@ import {
   getStudentDeliverables,
   saveStudentDeliverable,
   StudentDeliverable,
+  verifyAndLoginUser,
+  getActiveUserProfile,
+  logoutActiveUser,
+  UserProfile,
   supabase 
 } from '../../lib/supabase';
 import { getTelemetryHistory, TelemetryRecord } from '../../lib/telemetry';
@@ -81,6 +85,7 @@ interface StudentLead {
 export default function AdminPanelPage() {
   // Authentication State
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [adminUser, setAdminUser] = useState<UserProfile | null>(null);
   const [adminUserId, setAdminUserId] = useState<string>('');
   const [adminPassword, setAdminPassword] = useState<string>('');
   const [authError, setAuthError] = useState<string>('');
@@ -105,89 +110,8 @@ export default function AdminPanelPage() {
   const [counsellingSearch, setCounsellingSearch] = useState('');
   const [leadFilter, setLeadFilter] = useState<'all' | 'hot' | 'vip_ready' | 'premium'>('all');
 
-  // Leads State
-  const [leads, setLeads] = useState<StudentLead[]>([
-    {
-      id: 'l1',
-      student_name: 'Aarav Mehra',
-      phone_number: '+91 85446 37096',
-      neet_score: 645,
-      air_rank: 7200,
-      domicile_state: 'Delhi',
-      lead_score: 95,
-      lead_tier: 'vip_ready',
-      assigned_mentor_name: 'Aaditya Ranjan (Senior AIQ Lead)',
-      assigned_mentor_id: 'a0000000-0000-0000-0000-000000000001',
-      is_premium: true,
-      predictor_runs: 7,
-      comparisons_run: 4,
-      viewed_premium_times: 5,
-      meeting_link: 'https://meet.google.com/neet-vip-aarav',
-      choice_filling_pdf_url: 'https://collegemitra.com/docs/aarav_choice_filling_2026.pdf',
-      deliverables_status: {
-        choice_list_sent: true,
-        video_call_done: true,
-        seat_allotted: false,
-      },
-      created_at: '10 mins ago',
-    },
-    {
-      id: 'l2',
-      student_name: 'Sneha Patel',
-      phone_number: '+91 99201 88900',
-      neet_score: 585,
-      air_rank: 42000,
-      domicile_state: 'Maharashtra',
-      lead_score: 88,
-      lead_tier: 'hot',
-      assigned_mentor_name: 'Rahul Sharma (State Counselling Lead)',
-      assigned_mentor_id: 'a0000000-0000-0000-0000-000000000002',
-      is_premium: false,
-      predictor_runs: 12,
-      comparisons_run: 6,
-      viewed_premium_times: 3,
-      created_at: '25 mins ago',
-    },
-    {
-      id: 'l3',
-      student_name: 'Rohan Deshmukh',
-      phone_number: '+91 94432 11223',
-      neet_score: 510,
-      air_rank: 98000,
-      domicile_state: 'Karnataka',
-      lead_score: 92,
-      lead_tier: 'vip_ready',
-      assigned_mentor_name: 'Aaditya Ranjan (Senior AIQ Lead)',
-      assigned_mentor_id: 'a0000000-0000-0000-0000-000000000001',
-      is_premium: true,
-      predictor_runs: 15,
-      comparisons_run: 9,
-      viewed_premium_times: 6,
-      meeting_link: 'https://meet.google.com/neet-vip-rohan',
-      choice_filling_pdf_url: '',
-      deliverables_status: {
-        choice_list_sent: false,
-        video_call_done: false,
-        seat_allotted: false,
-      },
-      created_at: '1 hour ago',
-    },
-    {
-      id: 'l4',
-      student_name: 'Ananya Gupta',
-      phone_number: '+91 97110 55443',
-      neet_score: 615,
-      air_rank: 18500,
-      domicile_state: 'Uttar Pradesh',
-      lead_score: 74,
-      lead_tier: 'warm',
-      is_premium: false,
-      predictor_runs: 5,
-      comparisons_run: 2,
-      viewed_premium_times: 1,
-      created_at: '2 hours ago',
-    }
-  ]);
+  // Dynamic Leads State
+  const [leads, setLeads] = useState<StudentLead[]>([]);
 
   // Modal / Form States
   const [editingCollege, setEditingCollege] = useState<College | null>(null);
@@ -200,9 +124,10 @@ export default function AdminPanelPage() {
 
   // Check persisted admin session on load
   useEffect(() => {
-    const saved = localStorage.getItem('cm_admin_auth');
-    if (saved === 'true') {
+    const user = getActiveUserProfile();
+    if (user && user.role === 'admin') {
       setIsAuthenticated(true);
+      setAdminUser(user);
     }
   }, []);
 
@@ -225,6 +150,31 @@ export default function AdminPanelPage() {
       setFreeChatEnabled(flags?.free_chat_enabled ?? true);
       setDeliverables(Array.isArray(dels) ? dels : []);
 
+      // Convert deliverables & registered students into dynamic CRM Leads
+      if (Array.isArray(dels) && dels.length > 0) {
+        const dynamicLeads: StudentLead[] = dels.map((d, idx) => ({
+          id: d.studentId || d.id || `lead_${idx}`,
+          student_name: d.studentName,
+          phone_number: d.phoneNumber,
+          neet_score: d.score,
+          air_rank: d.rank,
+          domicile_state: d.state,
+          lead_score: d.isPremium ? 98 : 75,
+          lead_tier: d.isPremium ? 'vip_ready' : 'hot',
+          assigned_mentor_name: d.assignedMentorName,
+          assigned_mentor_id: d.assignedMentorId,
+          is_premium: d.isPremium,
+          predictor_runs: 5,
+          comparisons_run: 3,
+          viewed_premium_times: 4,
+          meeting_link: d.meetingLink,
+          choice_filling_pdf_url: d.choicePdfUrl,
+          deliverables_status: d.status,
+          created_at: 'Live synced',
+        }));
+        setLeads(dynamicLeads);
+      }
+
       // Load Telemetry Activity
       const tele = getTelemetryHistory();
       setTelemetryLogs(tele);
@@ -238,28 +188,26 @@ export default function AdminPanelPage() {
     loadAllData();
   }, [isAuthenticated]);
 
-  const handleAdminLogin = (e: React.FormEvent) => {
+  const handleAdminLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoggingIn(true);
     setAuthError('');
 
-    const id = adminUserId.trim().toLowerCase();
-    const pass = adminPassword.trim();
-
-    if ((id === 'admin@collegemitra.com' || id === 'admin' || id === 'neet.collegemitra@gmail.com') && 
-        (pass === 'Admin@NEET2026' || pass === 'Admin@2026' || pass === 'CollegeMitra@2026')) {
+    const res = await verifyAndLoginUser(adminUserId, adminPassword, 'admin');
+    if (res.success && res.profile) {
       setIsAuthenticated(true);
-      localStorage.setItem('cm_admin_auth', 'true');
+      setAdminUser(res.profile);
       setAuthError('');
     } else {
-      setAuthError('Invalid Admin ID or Password. Restricted access.');
+      setAuthError(res.error || 'Invalid Admin ID or Password. Database access restricted.');
     }
     setIsLoggingIn(false);
   };
 
   const handleAdminLogout = () => {
+    logoutActiveUser();
     setIsAuthenticated(false);
-    localStorage.removeItem('cm_admin_auth');
+    setAdminUser(null);
     setAdminPassword('');
   };
 

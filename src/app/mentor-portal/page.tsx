@@ -28,7 +28,8 @@ import {
   Check,
   Building2,
   ExternalLink,
-  Download
+  Download,
+  RefreshCw
 } from 'lucide-react';
 import { 
   getColleges, 
@@ -36,27 +37,27 @@ import {
   saveStudentDeliverable, 
   StudentDeliverable, 
   ChoiceFillingItem,
-  getLiveChatMessages,
-  sendLiveChatMessage,
-  ChatMessage,
-  getFeatureFlags
+  getLiveChatMessages, 
+  sendLiveChatMessage, 
+  ChatMessage, 
+  getFeatureFlags,
+  getFreeInquiries,
+  replyFreeInquiry,
+  FreeInquiry,
+  verifyAndLoginUser,
+  getActiveUserProfile,
+  logoutActiveUser,
+  UserProfile
 } from '../../lib/supabase';
 import { College } from '../../types';
 
-interface FreeInquiry {
-  id: string;
-  name: string;
-  phone: string;
-  question: string;
-  time: string;
-  replies: string[];
-}
-
 export default function MentorPortalPage() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [mentorUser, setMentorUser] = useState<UserProfile | null>(null);
   const [mentorEmail, setMentorEmail] = useState<string>('');
   const [mentorPassword, setMentorPassword] = useState<string>('');
   const [authError, setAuthError] = useState<string>('');
+  const [isLoggingIn, setIsLoggingIn] = useState<boolean>(false);
 
   const [colleges, setColleges] = useState<College[]>([]);
   const [deliverables, setDeliverables] = useState<StudentDeliverable[]>([]);
@@ -68,7 +69,6 @@ export default function MentorPortalPage() {
 
   // Choice Filling Builder State
   const [selectedCollegeId, setSelectedCollegeId] = useState<string>('');
-  const [collegeSearch, setCollegeSearch] = useState('');
   const [selectedCourse, setSelectedCourse] = useState('MBBS');
   const [selectedQuota, setSelectedQuota] = useState('AIQ_15');
   const [customTip, setCustomTip] = useState('');
@@ -80,47 +80,33 @@ export default function MentorPortalPage() {
   const [chatInput, setChatInput] = useState('');
 
   // Free Inquiries State
-  const [freeInquiries, setFreeInquiries] = useState<FreeInquiry[]>([
-    {
-      id: 'inq_1',
-      name: 'Sahil Tanwar',
-      phone: '+91 98112 34567',
-      question: 'With 612 marks in UP state quota, will I get GMC Gorakhpur or GMC Basti in Round 2?',
-      time: '15m ago',
-      replies: ['GMC Gorakhpur closing was 621 in R1, but GMC Basti is very safe for your rank in R2. Recommend filling Basti right after Ayodhya.'],
-    },
-    {
-      id: 'inq_2',
-      name: 'Riya Sen',
-      phone: '+91 97321 88990',
-      question: 'Is ₹2 Lakh deemed deposit refundable if I do not report to allotted college in Round 2?',
-      time: '45m ago',
-      replies: ['No! In Round 2 of MCC, if you are allotted a seat and do not report, your ₹2,00,000 security deposit is forfeited! Be extremely cautious.'],
-    }
-  ]);
+  const [freeInquiries, setFreeInquiries] = useState<FreeInquiry[]>([]);
   const [freeReplyInput, setFreeReplyInput] = useState<{ [key: string]: string }>({});
 
-  // Video Meeting Link
+  // Video Meeting & PDF
   const [meetLinkInput, setMeetLinkInput] = useState('');
   const [pdfLinkInput, setPdfLinkInput] = useState('');
 
   useEffect(() => {
-    const saved = localStorage.getItem('cm_mentor_auth');
-    if (saved === 'true') {
+    const user = getActiveUserProfile();
+    if (user && (user.role === 'mentor' || user.role === 'admin')) {
       setIsAuthenticated(true);
+      setMentorUser(user);
     }
   }, []);
 
   const loadMentorWorkspace = async () => {
     try {
-      const [colls, dels, flags] = await Promise.all([
+      const [colls, dels, flags, inqs] = await Promise.all([
         getColleges().catch(() => []),
         getStudentDeliverables().catch(() => []),
         getFeatureFlags().catch(() => ({ peak_mode: false, free_chat_enabled: true })),
+        getFreeInquiries().catch(() => []),
       ]);
       setColleges(Array.isArray(colls) ? colls : []);
       setDeliverables(Array.isArray(dels) ? dels : []);
       setFreeChatEnabled(flags.free_chat_enabled && !flags.peak_mode);
+      setFreeInquiries(Array.isArray(inqs) ? inqs : []);
 
       if (Array.isArray(colls) && colls.length > 0) {
         setSelectedCollegeId(colls[0].id);
@@ -145,24 +131,26 @@ export default function MentorPortalPage() {
     loadMentorWorkspace();
   }, [isAuthenticated]);
 
-  const handleMentorLogin = (e: React.FormEvent) => {
+  const handleMentorLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    const id = mentorEmail.trim().toLowerCase();
-    const pass = mentorPassword.trim();
+    setIsLoggingIn(true);
+    setAuthError('');
 
-    if ((id === 'mentor@collegemitra.com' || id === 'aaditya@collegemitra.com' || id === 'mentor' || id === 'neet.collegemitra@gmail.com') && 
-        (pass === 'Mentor@2026' || pass === 'CollegeMitra@2026' || pass === 'Mentor@NEET2026')) {
+    const res = await verifyAndLoginUser(mentorEmail, mentorPassword, 'mentor');
+    if (res.success && res.profile) {
       setIsAuthenticated(true);
-      localStorage.setItem('cm_mentor_auth', 'true');
+      setMentorUser(res.profile);
       setAuthError('');
     } else {
-      setAuthError('Invalid Mentor ID or Password. Restricted access.');
+      setAuthError(res.error || 'Invalid Mentor ID or Password. Database access restricted.');
     }
+    setIsLoggingIn(false);
   };
 
   const handleMentorLogout = () => {
+    logoutActiveUser();
     setIsAuthenticated(false);
-    localStorage.removeItem('cm_mentor_auth');
+    setMentorUser(null);
     setMentorPassword('');
   };
 
@@ -235,7 +223,7 @@ export default function MentorPortalPage() {
     setDeliverables(prev => prev.map(d => d.id === updatedDeliverable.id ? updatedDeliverable : d));
 
     setIsPublishing(false);
-    alert(`Choice Filling sequence with ${workingChoices.length} colleges published & synced to ${selectedStudent.studentName}'s dashboard!`);
+    alert(`Choice Filling sequence with ${workingChoices.length} colleges published & synced live to ${selectedStudent.studentName}'s dashboard!`);
   };
 
   // Real-time Chat
@@ -255,10 +243,11 @@ export default function MentorPortalPage() {
     setChatMessages(prev => [...prev, newMsg]);
   };
 
-  const handleSendFreeReply = (inquiryId: string) => {
+  const handleSendFreeReply = async (inquiryId: string) => {
     const text = freeReplyInput[inquiryId];
     if (!text || !text.trim()) return;
 
+    await replyFreeInquiry(inquiryId, text.trim());
     setFreeInquiries(prev => prev.map(inq => inq.id === inquiryId ? {
       ...inq,
       replies: [...inq.replies, text.trim()]
@@ -319,9 +308,10 @@ export default function MentorPortalPage() {
 
             <button
               type="submit"
+              disabled={isLoggingIn}
               className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-sm shadow-lg transition flex items-center justify-center gap-2"
             >
-              <Lock className="w-4 h-4" /> Sign In to Mentor Workspace
+              <Lock className="w-4 h-4" /> {isLoggingIn ? 'Verifying Credentials...' : 'Sign In to Mentor Workspace'}
             </button>
 
             <div className="pt-2 text-center text-[11px] text-slate-400">
@@ -354,12 +344,20 @@ export default function MentorPortalPage() {
           </p>
         </div>
 
-        <button
-          onClick={handleMentorLogout}
-          className="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl shadow transition flex items-center gap-1.5 self-start md:self-auto"
-        >
-          <LogOut className="w-4 h-4" /> Mentor Logout
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={loadMentorWorkspace}
+            className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5"
+          >
+            <RefreshCw className="w-4 h-4 text-emerald-400" /> Refresh Data
+          </button>
+          <button
+            onClick={handleMentorLogout}
+            className="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl shadow transition flex items-center gap-1.5"
+          >
+            <LogOut className="w-4 h-4" /> Mentor Logout
+          </button>
+        </div>
       </div>
 
       {/* Main Workspace Layout */}
@@ -370,49 +368,53 @@ export default function MentorPortalPage() {
             <h3 className="font-bold text-slate-900 text-sm flex items-center justify-between mb-3">
               <span>Assigned Students ({deliverables.length})</span>
               <span className="text-xs bg-amber-100 text-amber-900 font-bold px-2 py-0.5 rounded-full">
-                {deliverables.filter(d => d.isPremium).length} VIP Paid
+                {deliverables.length} Active in Database
               </span>
             </h3>
 
-            <div className="space-y-2.5">
-              {deliverables.map((st) => {
-                const isSelected = selectedStudent?.id === st.id;
-                return (
-                  <div
-                    key={st.id}
-                    onClick={() => handleSelectStudent(st)}
-                    className={`p-3.5 rounded-xl border cursor-pointer transition ${
-                      isSelected
-                        ? 'bg-emerald-50/80 border-emerald-500 shadow-md ring-1 ring-emerald-500'
-                        : 'bg-white border-slate-200 hover:border-slate-300'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="font-bold text-slate-900 text-sm">{st.studentName}</div>
-                      {st.isPremium && (
+            {deliverables.length === 0 ? (
+              <div className="text-center py-8 text-slate-400 text-xs">
+                No students registered yet. New student registrations will appear here live.
+              </div>
+            ) : (
+              <div className="space-y-2.5">
+                {deliverables.map((st) => {
+                  const isSelected = selectedStudent?.id === st.id || selectedStudent?.studentId === st.studentId;
+                  return (
+                    <div
+                      key={st.id || st.studentId}
+                      onClick={() => handleSelectStudent(st)}
+                      className={`p-3.5 rounded-xl border cursor-pointer transition ${
+                        isSelected
+                          ? 'bg-emerald-50/80 border-emerald-500 shadow-md ring-1 ring-emerald-500'
+                          : 'bg-white border-slate-200 hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="font-bold text-slate-900 text-sm">{st.studentName}</div>
                         <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 text-[10px] font-black uppercase flex items-center gap-1">
                           <Crown className="w-3 h-3 text-amber-600" /> VIP
                         </span>
-                      )}
+                      </div>
+                      <div className="text-xs text-slate-500 mt-1">
+                        Score: <strong>{st.score}/720</strong> • AIR <strong>#{st.rank ? st.rank.toLocaleString() : 'N/A'}</strong> ({st.state})
+                      </div>
+                      <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-100 text-[11px]">
+                        <span className="text-emerald-700 font-semibold">{st.choiceList?.length || 0} Choices Formulated</span>
+                        <a href={`tel:${st.phoneNumber}`} onClick={(e) => e.stopPropagation()} className="text-emerald-700 font-bold hover:underline">
+                          Call Student ↗
+                        </a>
+                      </div>
                     </div>
-                    <div className="text-xs text-slate-500 mt-1">
-                      Score: <strong>{st.score}/720</strong> • AIR <strong>#{st.rank.toLocaleString()}</strong> ({st.state})
-                    </div>
-                    <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-100 text-[11px]">
-                      <span className="text-emerald-700 font-semibold">{st.choiceList?.length || 0} Choices Stored</span>
-                      <a href={`tel:${st.phoneNumber}`} onClick={(e) => e.stopPropagation()} className="text-emerald-700 font-bold hover:underline">
-                        Call Student ↗
-                      </a>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
 
         {/* Right: Workspace Center (8 Cols) */}
-        {selectedStudent && (
+        {selectedStudent ? (
           <div className="lg:col-span-8 space-y-6">
             {/* Student Overview Pill */}
             <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -424,7 +426,7 @@ export default function MentorPortalPage() {
                   </span>
                 </div>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  AIR #{selectedStudent.rank.toLocaleString()} • Domicile: {selectedStudent.state} • Contact: {selectedStudent.phoneNumber}
+                  AIR #{selectedStudent.rank ? selectedStudent.rank.toLocaleString() : 'N/A'} • Domicile: {selectedStudent.state} • Contact: {selectedStudent.phoneNumber}
                 </p>
               </div>
 
@@ -473,7 +475,7 @@ export default function MentorPortalPage() {
                       Add Colleges to {selectedStudent.studentName}'s Sequence
                     </div>
                     <span className="text-xs text-slate-400 font-semibold">
-                      Dropdown / Search • Reorder in priority order
+                      College Dropdown Selection
                     </span>
                   </div>
 
@@ -481,7 +483,7 @@ export default function MentorPortalPage() {
                   <div className="space-y-3">
                     <div>
                       <label className="text-xs font-bold text-slate-700 mb-1 block">
-                        Select Medical College (Dropdown Selection)
+                        Select Medical College (Dropdown)
                       </label>
                       <select
                         value={selectedCollegeId}
@@ -529,11 +531,11 @@ export default function MentorPortalPage() {
                     {/* Custom Tip Input */}
                     <div>
                       <label className="text-xs font-bold text-slate-700 mb-1 block">
-                        Senior Mentor Advice for this College
+                        Senior Mentor Strategy Note for this College
                       </label>
                       <input
                         type="text"
-                        placeholder="e.g. Excellent clinical exposure, internal PG quota advantage, ₹0 bond penalty..."
+                        placeholder="e.g. Excellent clinical OPD bed exposure, internal PG quota advantage, ₹0 bond penalty..."
                         value={customTip}
                         onChange={(e) => setCustomTip(e.target.value)}
                         className="w-full px-3.5 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 bg-white"
@@ -650,13 +652,13 @@ export default function MentorPortalPage() {
                     </div>
                   ) : (
                     chatMessages.map((m) => (
-                      <div key={m.id} className={`flex flex-col ${m.senderType === 'mentor' ? 'items-end' : 'items-start'}`}>
+                      <div key={m.id} className={`flex flex-col ${m.senderType === 'mentor' || m.sender === 'mentor' ? 'items-end' : 'items-start'}`}>
                         <div className={`p-3.5 rounded-2xl text-xs max-w-[80%] leading-relaxed ${
-                          m.senderType === 'mentor'
+                          m.senderType === 'mentor' || m.sender === 'mentor'
                             ? 'bg-emerald-700 text-white rounded-br-none'
                             : 'bg-white text-slate-800 border border-slate-200 rounded-bl-none shadow-sm'
                         }`}>
-                          {m.message}
+                          {m.message || m.text}
                         </div>
                         <span className="text-[10px] text-slate-400 mt-0.5 px-1">
                           {m.time || (m.timestamp ? new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '')}
@@ -702,58 +704,70 @@ export default function MentorPortalPage() {
                     <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl text-emerald-950 text-xs flex items-center justify-between">
                       <div className="flex items-center gap-2 font-bold">
                         <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                        Free User Inquiries Enabled by Admin
+                        Free Student Inquiries ({freeInquiries.length})
                       </div>
-                      <span className="text-[11px] text-emerald-800 font-medium">Respond to convert hot leads</span>
+                      <span className="text-[11px] text-emerald-800 font-medium">Respond to help medical aspirants</span>
                     </div>
 
-                    <div className="space-y-3">
-                      {freeInquiries.map((inq) => (
-                        <div key={inq.id} className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-3">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <span className="font-extrabold text-slate-900 text-xs">{inq.name}</span>
-                              <span className="text-[11px] text-slate-400 ml-2 font-mono">{inq.phone}</span>
+                    {freeInquiries.length === 0 ? (
+                      <div className="bg-white rounded-2xl p-12 text-center border border-slate-200 text-slate-400 text-xs">
+                        No free inquiries submitted yet. Questions asked by registered candidates on the website will show up here.
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {freeInquiries.map((inq) => (
+                          <div key={inq.id} className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-3">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <span className="font-extrabold text-slate-900 text-xs">{inq.name}</span>
+                                <span className="text-[11px] text-slate-400 ml-2 font-mono">{inq.phone}</span>
+                              </div>
+                              <span className="text-[10px] text-slate-400">{inq.time}</span>
                             </div>
-                            <span className="text-[10px] text-slate-400">{inq.time}</span>
-                          </div>
 
-                          <div className="p-3 bg-slate-50 rounded-xl text-xs text-slate-800 border border-slate-200 font-medium">
-                            "{inq.question}"
-                          </div>
-
-                          {inq.replies.length > 0 && (
-                            <div className="space-y-1.5 pl-3 border-l-2 border-emerald-500 text-xs">
-                              {inq.replies.map((rep, rIdx) => (
-                                <div key={rIdx} className="text-slate-700 bg-emerald-50/50 p-2 rounded-lg">
-                                  <strong className="text-emerald-800">Your Mentor Answer:</strong> {rep}
-                                </div>
-                              ))}
+                            <div className="p-3 bg-slate-50 rounded-xl text-xs text-slate-800 border border-slate-200 font-medium">
+                              "{inq.question}"
                             </div>
-                          )}
 
-                          <div className="flex items-center gap-2 pt-2">
-                            <input
-                              type="text"
-                              placeholder="Type mentor reply to this student..."
-                              value={freeReplyInput[inq.id] || ''}
-                              onChange={(e) => setFreeReplyInput({ ...freeReplyInput, [inq.id]: e.target.value })}
-                              className="flex-1 px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500"
-                            />
-                            <button
-                              onClick={() => handleSendFreeReply(inq.id)}
-                              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1"
-                            >
-                              <Send className="w-3 h-3" /> Reply
-                            </button>
+                            {inq.replies && inq.replies.length > 0 && (
+                              <div className="space-y-1.5 pl-3 border-l-2 border-emerald-500 text-xs">
+                                {inq.replies.map((rep, rIdx) => (
+                                  <div key={rIdx} className="text-slate-700 bg-emerald-50/50 p-2 rounded-lg">
+                                    <strong className="text-emerald-800">Your Mentor Answer:</strong> {rep}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
+                            <div className="flex items-center gap-2 pt-2">
+                              <input
+                                type="text"
+                                placeholder="Type mentor reply to this student..."
+                                value={freeReplyInput[inq.id] || ''}
+                                onChange={(e) => setFreeReplyInput({ ...freeReplyInput, [inq.id]: e.target.value })}
+                                className="flex-1 px-3 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500"
+                              />
+                              <button
+                                onClick={() => handleSendFreeReply(inq.id)}
+                                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1"
+                              >
+                                <Send className="w-3 h-3" /> Reply
+                              </button>
+                            </div>
                           </div>
-                        </div>
-                      ))}
-                    </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
             )}
+          </div>
+        ) : (
+          <div className="lg:col-span-8 bg-white rounded-2xl border border-slate-200 p-12 text-center text-slate-400 text-xs space-y-2">
+            <UserCheck className="w-10 h-10 mx-auto text-slate-300" />
+            <p className="font-bold text-slate-700 text-sm">Select a student from the left panel</p>
+            <p>Pick any candidate to manage their choice filling ladder and live VIP chat.</p>
           </div>
         )}
       </div>

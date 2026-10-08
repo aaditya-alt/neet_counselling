@@ -1,6 +1,6 @@
 import React from 'react';
 import Link from 'next/link';
-import { Stethoscope, ShieldCheck, HeartHandshake, PhoneCall, Mail, MapPin } from 'lucide-react';
+import { GraduationCap, ShieldCheck, HeartHandshake, PhoneCall, Mail, MapPin, Crown, UserCheck, Lock } from 'lucide-react';
 
 export const Footer: React.FC = () => {
   return (
@@ -10,24 +10,27 @@ export const Footer: React.FC = () => {
           {/* Brand & Vision */}
           <div>
             <div className="flex items-center gap-2 mb-4">
-              <div className="w-9 h-9 rounded-xl bg-emerald-600 flex items-center justify-center text-white">
-                <Stethoscope className="w-5 h-5" />
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center text-white shadow-md">
+                <GraduationCap className="w-5 h-5" />
               </div>
-              <span className="font-extrabold text-xl text-white">NEET Counsellor</span>
+              <div className="flex items-center gap-1">
+                <span className="font-extrabold text-xl text-white">College</span>
+                <span className="font-extrabold text-xl text-emerald-400">Mitra</span>
+              </div>
             </div>
             <p className="text-xs text-slate-400 leading-relaxed mb-4">
-              India's premier deterministic NEET UG medical seat allocation intelligence engine. Empowering MBBS aspirants across AIQ 15%, State 85%, and Deemed quota matrices.
+              India's premier deterministic NEET UG medical seat allocation intelligence engine. Empowering MBBS aspirants across AIQ 15%, State 85%, and Deemed quota matrices for 2026–2027.
             </p>
-            <div className="flex items-center gap-2 text-xs text-emerald-400">
-              <ShieldCheck className="w-4 h-4" /> Official MCC Historical Cutoff Records
+            <div className="flex items-center gap-2 text-xs text-emerald-400 font-semibold">
+              <ShieldCheck className="w-4 h-4 text-emerald-400" /> Official MCC Historical Cutoff Records
             </div>
           </div>
 
-          {/* Quick Links */}
+          {/* Quick Links & Tools */}
           <div>
             <h4 className="text-white font-bold text-sm uppercase tracking-wider mb-4">Predictors & Tools</h4>
             <ul className="space-y-2 text-xs">
-              <li><Link href="/college-predictor" className="hover:text-emerald-400 transition-colors">NEET UG College Predictor</Link></li>
+              <li><Link href="/college-predictor" className="hover:text-emerald-400 transition-colors">NEET UG College Predictor (2026-27)</Link></li>
               <li><Link href="/counselling" className="hover:text-emerald-400 transition-colors">State & Central Counselling Guide (36+ States)</Link></li>
               <li><Link href="/rank-predictor" className="hover:text-emerald-400 transition-colors">Marks vs Expected AIR Predictor</Link></li>
               <li><Link href="/colleges" className="hover:text-emerald-400 transition-colors">Government & AIIMS Directory</Link></li>
@@ -36,43 +39,65 @@ export const Footer: React.FC = () => {
             </ul>
           </div>
 
-          {/* Domicile States */}
+          {/* Portals & Gateways */}
           <div>
-            <h4 className="text-white font-bold text-sm uppercase tracking-wider mb-4">State Counselling 85%</h4>
-            <ul className="space-y-2 text-xs">
-              <li><Link href="/colleges?state=Delhi" className="hover:text-emerald-400 transition-colors">Delhi DU / IPU Counselling</Link></li>
-              <li><Link href="/colleges?state=Uttar Pradesh" className="hover:text-emerald-400 transition-colors">UP DGME Medical Seats</Link></li>
-              <li><Link href="/colleges?state=Maharashtra" className="hover:text-emerald-400 transition-colors">Maharashtra State CET Cell</Link></li>
-              <li><Link href="/colleges?state=Karnataka" className="hover:text-emerald-400 transition-colors">Karnataka KEA Medical Quota</Link></li>
-              <li><Link href="/colleges?state=Tamil Nadu" className="hover:text-emerald-400 transition-colors">Tamil Nadu DME Selection</Link></li>
+            <h4 className="text-white font-bold text-sm uppercase tracking-wider mb-4">Portals & Gateways</h4>
+            <ul className="space-y-2.5 text-xs">
+              <li>
+                <Link href="/student-dashboard" className="flex items-center gap-2 text-amber-400 hover:text-amber-300 font-semibold transition-colors">
+                  <Crown className="w-3.5 h-3.5" /> Student VIP Dashboard
+                </Link>
+              </li>
+              <li>
+                <Link href="/mentor-portal" className="flex items-center gap-2 text-teal-400 hover:text-teal-300 font-semibold transition-colors">
+                  <UserCheck className="w-3.5 h-3.5" /> Senior Mentor Portal
+                </Link>
+              </li>
+              <li>
+                <Link href="/admin" className="flex items-center gap-2 text-rose-400 hover:text-rose-300 font-semibold transition-colors">
+                  <Lock className="w-3.5 h-3.5" /> Master Admin Panel
+                </Link>
+              </li>
+              <li>
+                <Link href="/mentors" className="flex items-center gap-2 text-slate-300 hover:text-emerald-400 transition-colors">
+                  <GraduationCap className="w-3.5 h-3.5 text-slate-400" /> Senior Mentors Directory
+                </Link>
+              </li>
             </ul>
           </div>
 
-          {/* Senior Doctor Helpline */}
+          {/* Senior Mentor Helpline */}
           <div>
-            <h4 className="text-white font-bold text-sm uppercase tracking-wider mb-4">Urgent Doctor Helpline</h4>
+            <h4 className="text-white font-bold text-sm uppercase tracking-wider mb-4">Senior Mentor Helpline</h4>
             <div className="space-y-3 text-xs">
-              <a href="tel:+918882153322" className="flex items-center gap-2 text-emerald-400 font-bold hover:underline">
-                <PhoneCall className="w-4 h-4" /> +91 88821 53322 (Toll Free)
+              <a href="tel:+918544637096" className="flex items-center gap-2 text-emerald-400 font-bold hover:underline">
+                <PhoneCall className="w-4 h-4" /> +91 85446 37096 (Direct Line)
               </a>
               <div className="flex items-center gap-2 text-slate-400">
-                <Mail className="w-4 h-4" /> counselling@neetcounsellor.in
+                <Mail className="w-4 h-4" /> neet.collegemitra@gmail.com
               </div>
               <div className="flex items-center gap-2 text-slate-400">
-                <MapPin className="w-4 h-4" /> Medical Council Hub, New Delhi, India
+                <MapPin className="w-4 h-4" /> National Medical Counselling Desk, India
               </div>
               <div className="pt-2">
                 <div className="bg-slate-900 border border-slate-800 p-3 rounded-xl text-[11px] text-slate-400">
                   <HeartHandshake className="w-4 h-4 text-amber-400 mb-1" />
-                  Over 14,800+ MBBS seats guided in 2024 counselling sessions.
+                  Senior Mentor Aaditya Ranjan & Team • 2026–27 Dedicated Desk
                 </div>
               </div>
             </div>
           </div>
         </div>
 
-        <div className="border-t border-slate-800 mt-10 pt-6 text-center text-xs text-slate-500">
-          <p>© 2025–2026 NEET UG Counselling Platform. Built for Indian Medical Aspirants. All data sourced from MCC, DGME, KEA, and NMC official gazettes.</p>
+        <div className="border-t border-slate-800 mt-10 pt-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500">
+          <p>© 2026–2027 College Mitra. All rights reserved. Database verified with MCC, DGME & State Gazettes.</p>
+          <div className="flex items-center gap-4 text-[11px]">
+            <Link href="/admin" className="hover:text-slate-400">Admin</Link>
+            <span>•</span>
+            <Link href="/mentor-portal" className="hover:text-slate-400">Mentor</Link>
+            <span>•</span>
+            <Link href="/student-dashboard" className="hover:text-slate-400">Student Portal</Link>
+          </div>
         </div>
       </div>
     </footer>

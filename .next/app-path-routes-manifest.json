@@ -1,14 +1,14 @@
 {
   "/_not-found/page": "/_not-found",
-  "/counselling/page": "/counselling",
   "/admin/page": "/admin",
-  "/college-predictor/page": "/college-predictor",
+  "/mentors/page": "/mentors",
+  "/student-dashboard/page": "/student-dashboard",
   "/compare/page": "/compare",
+  "/counselling/page": "/counselling",
   "/mentor-portal/page": "/mentor-portal",
   "/colleges/page": "/colleges",
-  "/page": "/",
-  "/student-dashboard/page": "/student-dashboard",
-  "/rank-predictor/page": "/rank-predictor",
   "/pricing/page": "/pricing",
-  "/mentors/page": "/mentors"
+  "/college-predictor/page": "/college-predictor",
+  "/page": "/",
+  "/rank-predictor/page": "/rank-predictor"
 }
